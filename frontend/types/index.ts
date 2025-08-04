@@ -236,6 +236,7 @@ export interface PlayerModel {
   isAuthenticated: boolean;
   lastPlayed?: string;
   createdAt?: string;
+    isNewPlayer?: boolean; // Thêm dòng này
 }
 
 // Danh sách emoji có sẵn cho avatar
