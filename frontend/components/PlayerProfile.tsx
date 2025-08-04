@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PlayerModel } from '../types';
+import { PlayerModel } from '../types/Player'; // Thay đổi import này
 import toast from 'react-hot-toast';
 
 interface PlayerProfileProps {
