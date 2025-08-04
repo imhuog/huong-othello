@@ -41,8 +41,10 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
   useEffect(() => {
     console.log('🔌 Initializing socket connection...');
     
-    // Chỉ kết nối đến localhost:3001 cho development
-    const serverUrl = 'http://localhost:3001';
+   // Kết nối đến server Render cho production, localhost cho development
+    const serverUrl = process.env.NODE_ENV === 'production' 
+      ? 'https://huong-othello.onrender.com'
+      : 'http://localhost:3001';
 
     console.log('🌐 Connecting to:', serverUrl);
     
@@ -317,4 +319,5 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
       {children}
     </SocketContext.Provider>
   );
+
 };
