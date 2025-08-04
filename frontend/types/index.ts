@@ -138,6 +138,13 @@ export const BOARD_THEMES: ThemeColors[] = [
   }
 ];
 
+// Thêm interface cho coinsAwarded
+export interface CoinsAwarded {
+  playerId: string;
+  amount: number;
+  result: 'win' | 'lose' | 'draw';
+}
+
 // Player và Game state interfaces - Updated
 export interface GameState {
   board: (number | null)[][];
@@ -149,6 +156,7 @@ export interface GameState {
   timeLeft: number;
   winnerId?: string;
   coinTransactions?: CoinTransaction[]; // Thêm thông tin giao dịch xu
+  coinsAwarded?: CoinsAwarded; // Thêm thuộc tính này để fix lỗi
 }
 
 export interface Player {
