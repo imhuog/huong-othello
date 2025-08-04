@@ -306,12 +306,13 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
           <p>🪙 Người chơi mới được tặng <strong className="text-yellow-400">100 xu</strong></p>
           <p>💰 Thắng: +10 xu • Hòa: +5 xu • Thua: -5 xu</p>
           <p className="text-xs text-gray-400">
-            Nickname của bạn sẽ được lưu để theo dõi xu qua các lần chơi
+            Kiếm xu chơi game thuiiii
           </p>
         </motion.div>
       </form>
     </motion.div>
   );
 };
+
 
 export default LoginForm;
