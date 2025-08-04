@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-
+import { connectDB } from './database';
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -12,6 +12,13 @@ import { PlayerModel, LoginRequest, LoginResponse, getCoinChangeForResult, getRe
 
 const app = express();
 const server = createServer(app);
+
+// Test connection
+connectDB().then(() => {
+  console.log('✅ Database connected successfully');
+}).catch((error) => {
+  console.error('❌ Database connection failed:', error);
+});
 
 // Middleware
 app.use(helmet());
@@ -1102,3 +1109,4 @@ server.listen(PORT, () => {
   console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 CORS enabled for: ${process.env.NODE_ENV === 'production' ? 'https://your-vercel-domain.vercel.app' : 'http://localhost:3000'}`);
 });
+
