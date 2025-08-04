@@ -22,6 +22,7 @@ export interface PlayerModel {
   isAuthenticated: boolean; // Đã đăng nhập với nickname hợp lệ
   lastPlayed?: string;
   createdAt?: string;
+  isNewPlayer?: boolean; // Thêm thuộc tính này để khắc phục lỗi
 }
 
 export interface LoginRequest {
