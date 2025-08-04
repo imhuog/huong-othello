@@ -13,19 +13,7 @@ import { PlayerModel, LoginRequest, LoginResponse, getCoinChangeForResult, getRe
 const app = express();
 const server = createServer(app);
 
-import mongoose from 'mongoose';
 
-const MONGODB_URI = process.env.MONGODB_URI || '';
-
-export const connectDB = async (): Promise<void> => {
-  try {
-    await mongoose.connect(MONGODB_URI);
-    console.log('✅ MongoDB Connected');
-  } catch (error) {
-    console.error('❌ Database connection error:', error);
-    process.exit(1);
-  }
-};
 // Middleware
 app.use(helmet());
 app.use(compression());
@@ -1115,5 +1103,6 @@ server.listen(PORT, () => {
   console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 CORS enabled for: ${process.env.NODE_ENV === 'production' ? 'https://your-vercel-domain.vercel.app' : 'http://localhost:3000'}`);
 });
+
 
 
