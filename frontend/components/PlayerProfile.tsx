@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PlayerModel } from '../types/Player'; // Thay đổi import này
+import { PlayerModel } from '../types'; // Quay lại import cũ
 import toast from 'react-hot-toast';
 
 interface PlayerProfileProps {
@@ -129,7 +129,9 @@ const PlayerProfile: React.FC<PlayerProfileProps> = ({ player, onLogout, compact
                 <div>
                   <div className="text-xl font-bold text-white">{player.displayName}</div>
                   <div className="text-sm text-gray-400">
-                    {player.isNewPlayer ? 'Người chơi mới' : `Tham gia từ ${new Date(player.createdAt || '').toLocaleDateString('vi-VN')}`}
+                    {!player.createdAt || new Date(player.createdAt).getTime() > Date.now() - 7 * 24 * 60 * 60 * 1000 
+                      ? 'Người chơi mới' 
+                      : `Tham gia từ ${new Date(player.createdAt).toLocaleDateString('vi-VN')}`}
                   </div>
                 </div>
               </div>
