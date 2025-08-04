@@ -9,10 +9,13 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "resolveJsonModule": true
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "resolveJsonModule": true,
+    "moduleResolution": "node",
+    "allowSyntheticDefaultImports": true,
+    "noImplicitAny": false
   },
   "include": [
     "src/**/*"
