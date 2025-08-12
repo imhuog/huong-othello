@@ -14,9 +14,8 @@ const MainMenu: React.FC = () => {
   const [selectedDifficulty, setSelectedDifficulty] = useState<AIDifficulty>('medium');
   const [selectedPieceStyle, setSelectedPieceStyle] = useState(PIECE_EMOJI_OPTIONS[0]);
   const [showPieceSelector, setShowPieceSelector] = useState(false);
-  const [isJoiningFromUrl, setIsJoiningFromUrl] = useState(false);
 
-  // Auto-fill room ID from URL and automatically join if user is logged in
+// Auto-fill room ID from URL and automatically join if user is logged in
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const roomFromUrl = urlParams.get('room');
@@ -57,7 +56,6 @@ const MainMenu: React.FC = () => {
       }
     }
   }, [currentPlayer]);
-
   // Clear URL params after joining attempt
   useEffect(() => {
     if (isJoiningFromUrl && currentPlayer) {
@@ -376,16 +374,6 @@ const MainMenu: React.FC = () => {
             </motion.div>
           </motion.div>
         </div>
-      </div>
-    </div>
-  );
-};
-
-export default MainMenu;🎮</p>
-              <p className="mt-1">Made by huongcute hehe</p>
-            </motion.div>
-          </motion.div>
-        </div>
 
         {/* Desktop Layout - Side by side */}
         <div className="hidden lg:grid lg:grid-cols-3 gap-6">
@@ -637,4 +625,14 @@ export default MainMenu;🎮</p>
               animate={{ opacity: 1 }}
               transition={{ delay: 0.5 }}
             >
-              <p>🎮 Zui zẻ hong quạo
+              <p>🎮 Zui zẻ hong quạo 🎮</p>
+              <p className="mt-1">Made by huongcute hehe</p>
+            </motion.div>
+          </motion.div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default MainMenu;
