@@ -10,6 +10,8 @@ interface GameContextType {
   currentTheme: ThemeColors;
   isAIGame: boolean;
   aiDifficulty: AIDifficulty | null;
+  isJoiningRoom: boolean;
+  joinError: string | null;
   
   // Actions
   createRoom: (playerData: { name: string; emoji: string; pieceEmoji?: { black: string; white: string } }) => void;
@@ -20,6 +22,7 @@ interface GameContextType {
   newGame: () => void;
   sendMessage: (message: string) => void;
   setTheme: (theme: ThemeColors) => void;
+  clearJoinError: () => void;
 }
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
@@ -44,78 +47,59 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
   const [currentTheme, setCurrentTheme] = useState<ThemeColors>(BOARD_THEMES[0]);
   const [isAIGame, setIsAIGame] = useState(false);
   const [aiDifficulty, setAiDifficulty] = useState<AIDifficulty | null>(null);
+  const [isJoiningRoom, setIsJoiningRoom] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!socket || !isConnected) return;
 
-    console.log('🔗 Setting up GameContext socket listeners');
+    console.log('🔌 GameContext: Setting up socket event listeners');
+
+    // Clear previous listeners
+    socket.removeAllListeners('roomCreated');
+    socket.removeAllListeners('roomJoined');
+    socket.removeAllListeners('aiGameCreated');
+    socket.removeAllListeners('gameStateUpdate');
+    socket.removeAllListeners('newMessage');
+    socket.removeAllListeners('timerUpdate');
+    socket.removeAllListeners('error');
 
     // Socket event listeners
     socket.on('roomCreated', (data: { roomId: string; gameState: GameState }) => {
-      console.log('✅ Room created successfully:', data.roomId);
+      console.log('✅ Room created:', data.roomId);
       setRoomId(data.roomId);
       setGameState(data.gameState);
       setIsAIGame(false);
       setAiDifficulty(null);
-      setMessages([]); // Clear messages for new room
-      
-      // Generate shareable link
-      const shareableLink = `${window.location.origin}?room=${data.roomId}`;
-      
-      toast.success(
-        <div>
-          <div className="font-bold">🏠 Phòng đã tạo!</div>
-          <div className="text-sm mt-1">Mã: <span className="font-mono">{data.roomId}</span></div>
-          <div className="text-xs text-gray-300 mt-2">Link chia sẻ đã được copy!</div>
-        </div>,
-        {
-          duration: 8000,
-          style: {
-            background: 'linear-gradient(135deg, #10b981, #059669)',
-            color: 'white',
-            fontWeight: 'bold',
-            border: '2px solid #059669',
-          },
-          icon: '🎮'
-        }
-      );
-      
-      // Copy link to clipboard
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(shareableLink).then(() => {
-          console.log('📋 Shareable link copied to clipboard:', shareableLink);
-        }).catch(err => {
-          console.error('❌ Failed to copy link to clipboard:', err);
-        });
-      }
+      setIsJoiningRoom(false);
+      setJoinError(null);
+      toast.success(`Phòng đã tạo! Mã: ${data.roomId}`);
     });
 
     socket.on('roomJoined', (data: { roomId: string; gameState: GameState }) => {
-      console.log('✅ Room joined successfully:', data.roomId);
+      console.log('✅ Room joined:', data.roomId);
       setRoomId(data.roomId);
       setGameState(data.gameState);
       setIsAIGame(false);
       setAiDifficulty(null);
-      toast.success('Đã vào phòng thành công! 🎯');
+      setIsJoiningRoom(false);
+      setJoinError(null);
+      toast.success('Đã vào phòng thành công!');
     });
 
     socket.on('aiGameCreated', (data: { roomId: string; gameState: GameState; difficulty: AIDifficulty }) => {
-      console.log('✅ AI game created successfully:', { roomId: data.roomId, difficulty: data.difficulty });
+      console.log('✅ AI game created:', data.roomId, data.difficulty);
       setRoomId(data.roomId);
       setGameState(data.gameState);
       setIsAIGame(true);
       setAiDifficulty(data.difficulty);
-      setMessages([]); // Clear messages for AI game
-      toast.success(`Bắt đầu chơi với AI ${data.difficulty.toUpperCase()}! 🤖`);
+      setIsJoiningRoom(false);
+      setJoinError(null);
+      toast.success(`Bắt đầu chơi với AI ${data.difficulty.toUpperCase()}!`);
     });
 
     socket.on('gameStateUpdate', (newGameState: GameState) => {
-      console.log('🔄 Game state updated:', { 
-        currentPlayer: newGameState.currentPlayer, 
-        gameStatus: newGameState.gameStatus,
-        scores: newGameState.scores 
-      });
-      
+      console.log('🔄 Game state updated:', newGameState.gameStatus);
       setGameState(prevState => {
         // Show coin transaction notifications
         if (newGameState.coinTransactions && 
@@ -176,7 +160,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
     });
 
     socket.on('newMessage', (message: ChatMessage) => {
-      console.log('💬 New message received:', message.message);
+      console.log('💬 New message received');
       setMessages(prev => [...prev, message]);
     });
 
@@ -186,14 +170,13 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
 
     socket.on('error', (errorMessage: string) => {
       console.error('❌ Socket error:', errorMessage);
-      toast.error(errorMessage, {
-        duration: 5000,
-        icon: '⚠️'
-      });
+      setIsJoiningRoom(false);
+      setJoinError(errorMessage);
+      toast.error(errorMessage);
     });
 
     return () => {
-      console.log('🧹 Cleaning up GameContext socket listeners');
+      console.log('🧹 GameContext: Cleaning up socket listeners');
       socket.off('roomCreated');
       socket.off('roomJoined');
       socket.off('aiGameCreated');
@@ -205,143 +188,103 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
   }, [socket, isConnected]);
 
   const createRoom = (playerData: { name: string; emoji: string; pieceEmoji?: { black: string; white: string } }) => {
-    if (!socket || !currentPlayer) {
-      console.error('❌ Cannot create room: socket or currentPlayer not available');
-      toast.error('Bạn cần đăng nhập và kết nối trước!');
-      return;
-    }
-    
-    if (!isConnected) {
-      console.error('❌ Cannot create room: not connected to server');
-      toast.error('Chưa kết nối tới máy chủ!');
+    if (!socket || !currentPlayer || !isConnected) {
+      toast.error('Bạn cần đăng nhập và kết nối mạng trước!');
       return;
     }
     
     console.log('🏠 Creating room with player data:', playerData);
+    setIsJoiningRoom(true);
+    setJoinError(null);
     socket.emit('createRoom', playerData);
   };
 
   const joinRoom = (roomId: string, playerData: { name: string; emoji: string; pieceEmoji?: { black: string; white: string } }) => {
-    if (!socket || !currentPlayer) {
-      console.error('❌ Cannot join room: socket or currentPlayer not available');
-      toast.error('Bạn cần đăng nhập và kết nối trước!');
+    if (!socket || !currentPlayer || !isConnected) {
+      toast.error('Bạn cần đăng nhập và kết nối mạng trước!');
       return;
     }
     
-    if (!isConnected) {
-      console.error('❌ Cannot join room: not connected to server');
-      toast.error('Chưa kết nối tới máy chủ!');
+    if (!roomId || roomId.trim().length !== 6) {
+      toast.error('Mã phòng phải có 6 ký tự!');
       return;
     }
     
-    const cleanRoomId = roomId.trim().toUpperCase();
+    console.log('🚀 Joining room:', roomId, 'with player data:', playerData);
+    setIsJoiningRoom(true);
+    setJoinError(null);
+    socket.emit('joinRoom', { roomId: roomId.trim().toUpperCase(), playerData });
     
-    if (!cleanRoomId) {
-      console.error('❌ Cannot join room: empty room ID');
-      toast.error('Vui lòng nhập mã phòng!');
-      return;
-    }
-    
-    console.log('🚀 Joining room:', { roomId: cleanRoomId, playerData });
-    
-    // Show loading toast
-    const loadingToast = toast.loading('Đang vào phòng...', {
-      duration: 10000 // Will be dismissed when we get response
-    });
-    
-    socket.emit('joinRoom', { roomId: cleanRoomId, playerData });
-    
-    // Clear loading toast after a delay if no response
+    // Set timeout for join attempt
     setTimeout(() => {
-      toast.dismiss(loadingToast);
-    }, 10000);
+      if (isJoiningRoom) {
+        setIsJoiningRoom(false);
+        if (!gameState || gameState.players.length < 2) {
+          const errorMsg = `Không thể vào phòng ${roomId}. Phòng có thể không tồn tại hoặc đã đầy.`;
+          setJoinError(errorMsg);
+          toast.error(errorMsg);
+        }
+      }
+    }, 10000); // 10 second timeout
   };
 
   const createAIGame = (playerData: { name: string; emoji: string; pieceEmoji?: { black: string; white: string } }, difficulty: AIDifficulty) => {
-    if (!socket || !currentPlayer) {
-      console.error('❌ Cannot create AI game: socket or currentPlayer not available');
-      toast.error('Bạn cần đăng nhập và kết nối trước!');
+    if (!socket || !currentPlayer || !isConnected) {
+      toast.error('Bạn cần đăng nhập và kết nối mạng trước!');
       return;
     }
     
-    if (!isConnected) {
-      console.error('❌ Cannot create AI game: not connected to server');
-      toast.error('Chưa kết nối tới máy chủ!');
-      return;
-    }
-    
-    console.log('🤖 Creating AI game:', { playerData, difficulty });
+    console.log('🤖 Creating AI game with difficulty:', difficulty);
+    setIsJoiningRoom(true);
+    setJoinError(null);
     socket.emit('createAIGame', { playerData, difficulty });
   };
 
   const makeMove = (row: number, col: number) => {
-    if (!socket || !roomId) {
-      console.error('❌ Cannot make move: socket or roomId not available');
-      return;
-    }
-    
-    console.log('🎯 Making move:', { roomId, row, col });
-    
-    const moveData = { roomId, row, col };
-    if (isAIGame && aiDifficulty) {
-      socket.emit('makeMove', { ...moveData, difficulty: aiDifficulty });
-    } else {
-      socket.emit('makeMove', moveData);
+    if (socket && roomId && isConnected) {
+      const moveData = { roomId, row, col };
+      if (isAIGame && aiDifficulty) {
+        socket.emit('makeMove', { ...moveData, difficulty: aiDifficulty });
+      } else {
+        socket.emit('makeMove', moveData);
+      }
     }
   };
 
   const startGame = () => {
-    if (!socket || !roomId) {
-      console.error('❌ Cannot start game: socket or roomId not available');
-      return;
+    if (socket && roomId && isConnected) {
+      socket.emit('playerReady', roomId);
     }
-    
-    console.log('▶️ Player ready for room:', roomId);
-    socket.emit('playerReady', roomId);
   };
 
   const newGame = () => {
-    if (!socket || !roomId) {
-      console.error('❌ Cannot start new game: socket or roomId not available');
-      return;
+    if (socket && roomId && isConnected) {
+      // Send AI info if playing with AI
+      if (isAIGame && aiDifficulty) {
+        socket.emit('newGame', { roomId, isAI: true, difficulty: aiDifficulty });
+        // Clear messages for AI games
+        setMessages([]);
+      } else {
+        socket.emit('newGame', { roomId, isAI: false });
+        // Keep chat history for human vs human games
+      }
+      toast.success('Ván mới đã được tạo!');
     }
-    
-    console.log('🔄 Starting new game:', { roomId, isAI: isAIGame, difficulty: aiDifficulty });
-    
-    // Send AI info if playing with AI
-    if (isAIGame && aiDifficulty) {
-      socket.emit('newGame', { roomId, isAI: true, difficulty: aiDifficulty });
-      // Clear messages for AI games
-      setMessages([]);
-    } else {
-      socket.emit('newGame', { roomId, isAI: false });
-      // Keep chat history for human vs human games
-    }
-    toast.success('Ván mới đã được tạo! 🎮');
   };
 
   const sendMessage = (message: string) => {
-    if (!socket || !roomId) {
-      console.error('❌ Cannot send message: socket or roomId not available');
-      return;
+    if (socket && roomId && message.trim() && isConnected) {
+      socket.emit('sendMessage', { roomId, message: message.trim() });
     }
-    
-    const trimmedMessage = message.trim();
-    if (!trimmedMessage) {
-      return;
-    }
-    
-    console.log('💬 Sending message:', trimmedMessage);
-    socket.emit('sendMessage', { roomId, message: trimmedMessage });
   };
 
   const setTheme = (theme: ThemeColors) => {
-    console.log('🎨 Setting theme:', theme.name);
     setCurrentTheme(theme);
-    toast.success(`Đã chọn theme ${theme.name} ${theme.emoji}`, {
-      duration: 2000,
-      icon: '🎨'
-    });
+    toast.success(`Đã chọn theme ${theme.name} ${theme.emoji}`);
+  };
+
+  const clearJoinError = () => {
+    setJoinError(null);
   };
 
   return (
@@ -353,6 +296,8 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
         currentTheme,
         isAIGame,
         aiDifficulty,
+        isJoiningRoom,
+        joinError,
         createRoom,
         joinRoom,
         createAIGame,
@@ -361,6 +306,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
         newGame,
         sendMessage,
         setTheme,
+        clearJoinError,
       }}
     >
       {children}
