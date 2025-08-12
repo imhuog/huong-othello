@@ -1,4 +1,333 @@
-import { Request, Response } from 'express';
+socket.on('playerReady', (roomId: string) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    
+    const player = room.gameState.players.find(p => p.id === socket.id);
+    if (player) {
+      player.isReady = true;
+      
+      if (room.gameState.players.length === 1 && !player.color) {
+        player.color = 'black';
+      } else if (room.gameState.players.length === 2) {
+        const p1 = room.gameState.players[0];
+        const p2 = room.gameState.players[1];
+        if (!p1.color || !p2.color) {
+          p1.color = 'black';
+          p2.color = 'white';
+        }
+      }
+
+      if (room.gameState.players.length === 2 && room.gameState.players.every(p => p.isReady)) {
+        room.gameState.gameStatus = 'playing';
+        startTimer(roomId);
+      }
+      
+      io.to(roomId).emit('gameStateUpdate', room.gameState);
+    }
+  });
+
+  socket.on('makeMove', (data: { roomId: string; row: number; col: number; difficulty?: AIDifficulty }) => {
+    const room = rooms.get(data.roomId);
+    if (!room || room.gameState.gameStatus !== 'playing') return;
+    
+    const currentPlayerObj = room.gameState.players.find(p => p.color === (room.gameState.currentPlayer === 1 ? 'black' : 'white'));
+    
+    if (!currentPlayerObj || currentPlayerObj.id !== socket.id) return;
+
+    const validMove = room.gameState.validMoves.some(([r, c]) => r === data.row && c === data.col);
+    if (!validMove) return;
+    
+    // Make the move
+    room.gameState.board = OthelloGame.makeMove(room.gameState.board, data.row, data.col, room.gameState.currentPlayer);
+    room.gameState.scores = OthelloGame.calculateScores(room.gameState.board);
+    room.gameState.lastMove = { row: data.row, col: data.col, playerId: currentPlayerObj.id };
+    
+    // Switch player
+    let nextPlayerNum = room.gameState.currentPlayer === 1 ? 2 : 1;
+    room.gameState.currentPlayer = nextPlayerNum as 1 | 2;
+    room.gameState.validMoves = OthelloGame.getValidMoves(room.gameState.board, room.gameState.currentPlayer);
+    
+    // Check if current player has no moves
+    if (room.gameState.validMoves.length === 0) {
+      let otherPlayerNum = room.gameState.currentPlayer === 1 ? 2 : 1;
+      let otherPlayerMoves = OthelloGame.getValidMoves(room.gameState.board, otherPlayerNum);
+
+      if (otherPlayerMoves.length === 0) {
+        // Both players have no moves, game over
+        room.gameState.gameStatus = 'finished';
+        clearInterval(roomTimers.get(data.roomId)!);
+        roomTimers.delete(data.roomId);
+        
+        const scores = OthelloGame.calculateScores(room.gameState.board);
+        if (scores[1] > scores[2]) {
+          room.gameState.winnerId = room.gameState.players.find(p => p.color === 'black')?.id;
+        } else if (scores[2] > scores[1]) {
+          room.gameState.winnerId = room.gameState.players.find(p => p.color === 'white')?.id;
+        } else {
+          room.gameState.winnerId = 'draw';
+        }
+        
+        // Award coins to players
+        awardCoinsToPlayers(room);
+      } else {
+        // Skip turn to the other player
+        room.gameState.currentPlayer = otherPlayerNum as 1 | 2;
+        room.gameState.validMoves = otherPlayerMoves;
+      }
+    }
+    
+    io.to(data.roomId).emit('gameStateUpdate', room.gameState);
+    
+    // Handle AI move if playing against AI
+    const aiPlayer = room.gameState.players.find(p => p.id === 'AI');
+    
+    if (aiPlayer && room.gameState.gameStatus === 'playing' && room.gameState.currentPlayer === (aiPlayer.color === 'black' ? 1 : 2)) {
+      // AI's turn
+      setTimeout(() => {
+        makeAIMove(data.roomId);
+      }, 1000);
+    } else if (room.gameState.gameStatus === 'playing') {
+      // Human player's turn
+      startTimer(data.roomId);
+    }
+  });
+
+  socket.on('newGame', (data: { roomId: string; isAI?: boolean; difficulty?: AIDifficulty } | string) => {
+    const roomId = typeof data === 'string' ? data : data.roomId;
+    const isAI = typeof data === 'object' ? data.isAI : false;
+    const difficulty = typeof data === 'object' ? data.difficulty : undefined;
+    
+    const room = rooms.get(roomId);
+    if (!room) return;
+    
+    if (roomTimers.has(roomId)) {
+      clearInterval(roomTimers.get(roomId)!);
+      roomTimers.delete(roomId);
+    }
+
+    // Store old player data and refresh their coins from database
+    const oldPlayers = room.gameState.players.map(p => {
+      if (p.isAuthenticated && p.id !== 'AI') {
+        // Refresh coins from database
+        const playerData = database.getPlayer(p.displayName);
+        if (playerData) {
+          return { ...p, coins: playerData.coins };
+        }
+      }
+      return { ...p };
+    });
+    
+    // Reset game state
+    room.gameState = createInitialGameState();
+    
+    if (isAI && difficulty) {
+      // AI game
+      const humanPlayerData = oldPlayers.find(p => p.id !== 'AI');
+      const aiPlayer: Player = {
+        id: 'AI',
+        nickname: 'ai',
+        displayName: `AI (${difficulty.toUpperCase()})`,
+        emoji: '🤖',
+        isReady: true,
+        color: 'white',
+        pieceEmoji: humanPlayerData?.pieceEmoji,
+        coins: 0,
+        isAuthenticated: false
+      };
+      
+      if (humanPlayerData) {
+        humanPlayerData.isReady = true;
+        humanPlayerData.color = 'black';
+        room.gameState.players = [humanPlayerData, aiPlayer];
+      } else {
+        room.gameState.players = [aiPlayer];
+      }
+      
+      room.gameState.gameStatus = 'playing';
+      room.isAIGame = true;
+      room.aiDifficulty = difficulty;
+      
+      startTimer(roomId);
+    } else {
+      // Human vs human game
+      room.gameState.players = oldPlayers.map((p, index) => ({ 
+        ...p, 
+        isReady: false,
+        color: index === 0 ? 'black' : 'white'
+      }));
+      
+      room.isAIGame = false;
+      room.aiDifficulty = undefined;
+    }
+    
+    // Clear coin transactions for new game
+    room.gameState.coinTransactions = undefined;
+    
+    io.to(roomId).emit('gameStateUpdate', room.gameState);
+  });
+
+  socket.on('sendMessage', (data: { roomId: string; message: string }) => {
+    const room = rooms.get(data.roomId);
+    if (!room) return;
+    
+    const player = room.gameState.players.find(p => p.id === socket.id);
+    if (!player) return;
+    
+    const chatMessage: ChatMessage = {
+      id: uuidv4(),
+      playerId: socket.id,
+      playerName: player.displayName,
+      message: data.message,
+      timestamp: Date.now()
+    };
+    
+    room.messages.push(chatMessage);
+    
+    if (room.messages.length > 50) {
+      room.messages = room.messages.slice(-50);
+    }
+    
+    io.to(data.roomId).emit('newMessage', chatMessage);
+  });
+
+  socket.on('disconnect', () => {
+    console.log('👋 User disconnected:', socket.id);
+    
+    // Remove from authenticated players
+    authenticatedPlayers.delete(socket.id);
+    
+    for (const [roomId, room] of rooms.entries()) {
+      const playerIndex = room.gameState.players.findIndex(p => p.id === socket.id);
+      if (playerIndex !== -1) {
+        room.gameState.players.splice(playerIndex, 1);
+        
+        if (room.gameState.players.length === 0) {
+          if (roomTimers.has(roomId)) {
+            clearInterval(roomTimers.get(roomId)!);
+            roomTimers.delete(roomId);
+          }
+          rooms.delete(roomId);
+          console.log(`🗑️ Deleted empty room: ${roomId}`);
+        } else {
+          const disconnectedPlayerColor = playerIndex === 0 ? 'black' : 'white';
+          const currentPlayerColor = room.gameState.currentPlayer === 1 ? 'black' : 'white';
+
+          if (disconnectedPlayerColor === currentPlayerColor) {
+            room.gameState.currentPlayer = room.gameState.currentPlayer === 1 ? 2 : 1;
+            room.gameState.validMoves = OthelloGame.getValidMoves(room.gameState.board, room.gameState.currentPlayer);
+            
+            if (room.gameState.validMoves.length === 0 && OthelloGame.isGameOver(room.gameState.board)) {
+              room.gameState.gameStatus = 'finished';
+              if (roomTimers.has(roomId)) {
+                clearInterval(roomTimers.get(roomId)!);
+                roomTimers.delete(roomId);
+              }
+              const scores = OthelloGame.calculateScores(room.gameState.board);
+              if (scores[1] > scores[2]) {
+                room.gameState.winnerId = room.gameState.players.find(p => p.color === 'black')?.id;
+              } else if (scores[2] > scores[1]) {
+                room.gameState.winnerId = room.gameState.players.find(p => p.color === 'white')?.id;
+              } else {
+                room.gameState.winnerId = 'draw';
+              }
+              
+              // Award coins even if other player disconnected
+              awardCoinsToPlayers(room);
+            }
+          }
+          io.to(roomId).emit('gameStateUpdate', room.gameState);
+        }
+      }
+    }
+  });
+});
+
+// Health check endpoint
+app.get('/health', (req: Request, res: Response) => {
+  res.json({ 
+    status: 'OK', 
+    timestamp: new Date().toISOString(),
+    playersCount: database.getPlayerCount(),
+    activeRooms: rooms.size,
+    authenticatedPlayers: authenticatedPlayers.size
+  });
+});
+
+// API endpoint to get player stats
+app.get('/api/player/:nickname', (req: Request, res: Response) => {
+  try {
+    const nickname = req.params.nickname;
+    const playerData = database.getPlayer(nickname);
+    
+    if (playerData) {
+      res.json({
+        success: true,
+        player: playerData
+      });
+    } else {
+      res.status(404).json({
+        success: false,
+        message: 'Player not found'
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+// API endpoint to check if room exists
+app.get('/api/room/:roomId', (req: Request, res: Response) => {
+  try {
+    const roomId = req.params.roomId.toUpperCase();
+    const room = rooms.get(roomId);
+    
+    if (room) {
+      res.json({
+        success: true,
+        room: {
+          id: room.id,
+          playerCount: room.gameState.players.length,
+          gameStatus: room.gameState.gameStatus,
+          isAIGame: room.isAIGame || false
+        }
+      });
+    } else {
+      res.status(404).json({
+        success: false,
+        message: 'Room not found'
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+const PORT = process.env.PORT || 3001;
+
+server.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📊 Database loaded with ${database.getPlayerCount()} players`);
+  console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🔗 CORS enabled for: ${process.env.NODE_ENV === 'production' ? 'https://huong-othello.vercel.app' : 'http://localhost:3000'}`);
+});
+
+// API endpoint to get leaderboard
+app.get('/api/leaderboard', (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 10;
+    const topPlayers = database.getTopPlayers(limit);
+    
+    res.json({
+      success: true,
+      players: topPlayers
+    });
+  }import { Request, Response } from 'express';
 
 import express from 'express';
 import { createServer } from 'http';
@@ -69,7 +398,7 @@ interface Room {
   messages: ChatMessage[];
   isAIGame?: boolean;
   aiDifficulty?: AIDifficulty;
-  createdAt: number; // Add timestamp for room cleanup
+  createdAt: number;
 }
 
 interface ChatMessage {
@@ -91,28 +420,23 @@ const rooms = new Map<string, Room>();
 const roomTimers = new Map<string, NodeJS.Timeout>();
 const authenticatedPlayers = new Map<string, PlayerModel>(); // socketId -> PlayerModel
 
-// Clean up old empty rooms periodically
+// Clean up old rooms every 30 minutes
 setInterval(() => {
   const now = Date.now();
-  const ROOM_TIMEOUT = 60 * 60 * 1000; // 1 hour
+  const ROOM_CLEANUP_TIME = 30 * 60 * 1000; // 30 minutes
   
   for (const [roomId, room] of rooms.entries()) {
-    // Remove rooms that are older than 1 hour and have no players
-    if ((now - room.createdAt > ROOM_TIMEOUT && room.gameState.players.length === 0) ||
-        // Remove rooms older than 24 hours regardless
-        (now - room.createdAt > 24 * 60 * 60 * 1000)) {
-      
+    if (now - room.createdAt > ROOM_CLEANUP_TIME) {
       console.log(`🧹 Cleaning up old room: ${roomId}`);
-      
-      // Clear timer if exists
       if (roomTimers.has(roomId)) {
         clearInterval(roomTimers.get(roomId)!);
         roomTimers.delete(roomId);
       }
-      
       rooms.delete(roomId);
     }
   }
+  
+  console.log(`📊 Active rooms: ${rooms.size}`);
 }, 30 * 60 * 1000); // Run every 30 minutes
 
 // Helper function to create Player from database data
@@ -425,20 +749,9 @@ class OthelloGame {
 // Helper functions
 function generateRoomId(): string {
   let roomId;
-  let attempts = 0;
-  const maxAttempts = 100;
-  
   do {
     roomId = Math.random().toString(36).substr(2, 6).toUpperCase();
-    attempts++;
-  } while (rooms.has(roomId) && attempts < maxAttempts);
-  
-  if (attempts >= maxAttempts) {
-    // Fallback to UUID-based room ID if we can't generate a unique one
-    roomId = uuidv4().substr(0, 6).toUpperCase();
-  }
-  
-  console.log(`🔑 Generated room ID: ${roomId} (attempts: ${attempts})`);
+  } while (rooms.has(roomId)); // Ensure unique room ID
   return roomId;
 }
 
@@ -707,12 +1020,12 @@ io.on('connection', (socket) => {
   });
 
   socket.on('createRoom', (playerData: { name: string; emoji: string; pieceEmoji?: { black: string; white: string } }) => {
-    console.log('🏠 Creating room request:', { socketId: socket.id, playerData });
+    console.log('🏠 Create room request from:', socket.id);
     
     // Check if player is authenticated
     const authenticatedPlayer = authenticatedPlayers.get(socket.id);
     if (!authenticatedPlayer) {
-      console.log('❌ Unauthenticated create room attempt');
+      console.log('❌ Create room failed: Not authenticated');
       socket.emit('error', 'Bạn cần đăng nhập trước khi tạo phòng');
       return;
     }
@@ -750,12 +1063,12 @@ io.on('connection', (socket) => {
   });
 
   socket.on('joinRoom', (data: { roomId: string; playerData: { name: string; emoji: string; pieceEmoji?: { black: string; white: string } } }) => {
-    console.log('🚀 Joining room request:', { socketId: socket.id, data });
+    console.log('🚀 Join room request:', data.roomId, 'from:', socket.id);
     
     // Check if player is authenticated
     const authenticatedPlayer = authenticatedPlayers.get(socket.id);
     if (!authenticatedPlayer) {
-      console.log('❌ Unauthenticated join room attempt');
+      console.log('❌ Join room failed: Not authenticated');
       socket.emit('error', 'Bạn cần đăng nhập trước khi vào phòng');
       return;
     }
@@ -764,23 +1077,22 @@ io.on('connection', (socket) => {
     const room = rooms.get(roomId);
     
     if (!room) {
-      console.log(`❌ Room not found: ${roomId}`);
-      console.log(`🔍 Available rooms: ${Array.from(rooms.keys()).join(', ')}`);
-      socket.emit('error', `Không tìm thấy phòng ${roomId}. Vui lòng kiểm tra lại mã phòng.`);
+      console.log('❌ Join room failed: Room not found:', roomId);
+      socket.emit('error', `Phòng ${roomId} không tồn tại hoặc đã bị xóa`);
       return;
     }
     
     if (room.gameState.players.length >= 2) {
-      console.log(`❌ Room ${roomId} is full`);
-      socket.emit('error', 'Phòng đã đầy. Vui lòng thử phòng khác.');
+      console.log('❌ Join room failed: Room is full:', roomId);
+      socket.emit('error', 'Phòng đã đầy');
       return;
     }
     
     // Check if player is already in the room
     const existingPlayer = room.gameState.players.find(p => p.id === socket.id);
     if (existingPlayer) {
-      console.log(`⚠️ Player ${authenticatedPlayer.displayName} already in room ${roomId}`);
-      socket.emit('roomJoined', { roomId, gameState: room.gameState });
+      console.log('❌ Join room failed: Player already in room');
+      socket.emit('error', 'Bạn đã ở trong phòng này rồi');
       return;
     }
     
@@ -799,18 +1111,18 @@ io.on('connection', (socket) => {
     room.gameState.players.push(player);
     socket.join(roomId);
     
-    console.log(`✅ Player joined room: ${authenticatedPlayer.displayName} -> ${roomId}`);
+    console.log(`✅ Player joined room: ${roomId} - ${authenticatedPlayer.displayName}`);
     io.to(roomId).emit('gameStateUpdate', room.gameState);
     socket.emit('roomJoined', { roomId, gameState: room.gameState });
   });
 
   socket.on('createAIGame', (data: { playerData: { name: string; emoji: string; pieceEmoji?: { black: string; white: string } }; difficulty: AIDifficulty }) => {
-    console.log('🤖 Creating AI game request:', { socketId: socket.id, data });
+    console.log('🤖 Create AI game request from:', socket.id);
     
     // Check if player is authenticated
     const authenticatedPlayer = authenticatedPlayers.get(socket.id);
     if (!authenticatedPlayer) {
-      console.log('❌ Unauthenticated AI game attempt');
+      console.log('❌ Create AI game failed: Not authenticated');
       socket.emit('error', 'Bạn cần đăng nhập trước khi chơi với AI');
       return;
     }
@@ -859,376 +1171,6 @@ io.on('connection', (socket) => {
     
     startTimer(roomId);
     
-    console.log(`✅ AI game created: ${roomId} by ${authenticatedPlayer.displayName} vs AI ${data.difficulty}`);
+    console.log(`✅ AI game created: ${roomId} - ${data.difficulty} difficulty`);
     socket.emit('aiGameCreated', { roomId, gameState, difficulty: data.difficulty });
   });
-
-  socket.on('playerReady', (roomId: string) => {
-    const room = rooms.get(roomId);
-    if (!room) {
-      console.log(`❌ Player ready - Room not found: ${roomId}`);
-      return;
-    }
-    
-    const player = room.gameState.players.find(p => p.id === socket.id);
-    if (player) {
-      player.isReady = true;
-      
-      if (room.gameState.players.length === 1 && !player.color) {
-        player.color = 'black';
-      } else if (room.gameState.players.length === 2) {
-        const p1 = room.gameState.players[0];
-        const p2 = room.gameState.players[1];
-        if (!p1.color || !p2.color) {
-          p1.color = 'black';
-          p2.color = 'white';
-        }
-      }
-
-      if (room.gameState.players.length === 2 && room.gameState.players.every(p => p.isReady)) {
-        room.gameState.gameStatus = 'playing';
-        startTimer(roomId);
-        console.log(`🎮 Game started in room: ${roomId}`);
-      }
-      
-      io.to(roomId).emit('gameStateUpdate', room.gameState);
-    }
-  });
-
-  socket.on('makeMove', (data: { roomId: string; row: number; col: number; difficulty?: AIDifficulty }) => {
-    const room = rooms.get(data.roomId);
-    if (!room || room.gameState.gameStatus !== 'playing') {
-      console.log(`❌ Invalid move - Room: ${data.roomId}, Status: ${room?.gameState.gameStatus}`);
-      return;
-    }
-    
-    const currentPlayerObj = room.gameState.players.find(p => p.color === (room.gameState.currentPlayer === 1 ? 'black' : 'white'));
-    
-    if (!currentPlayerObj || currentPlayerObj.id !== socket.id) {
-      console.log(`❌ Invalid move - Not player's turn: ${socket.id}`);
-      return;
-    }
-
-    const validMove = room.gameState.validMoves.some(([r, c]) => r === data.row && c === data.col);
-    if (!validMove) {
-      console.log(`❌ Invalid move - Position not valid: [${data.row}, ${data.col}]`);
-      return;
-    }
-    
-    console.log(`🎯 Valid move made: ${currentPlayerObj.displayName} at [${data.row}, ${data.col}]`);
-    
-    // Make the move
-    room.gameState.board = OthelloGame.makeMove(room.gameState.board, data.row, data.col, room.gameState.currentPlayer);
-    room.gameState.scores = OthelloGame.calculateScores(room.gameState.board);
-    room.gameState.lastMove = { row: data.row, col: data.col, playerId: currentPlayerObj.id };
-    
-    // Switch player
-    let nextPlayerNum = room.gameState.currentPlayer === 1 ? 2 : 1;
-    room.gameState.currentPlayer = nextPlayerNum as 1 | 2;
-    room.gameState.validMoves = OthelloGame.getValidMoves(room.gameState.board, room.gameState.currentPlayer);
-    
-    // Check if current player has no moves
-    if (room.gameState.validMoves.length === 0) {
-      let otherPlayerNum = room.gameState.currentPlayer === 1 ? 2 : 1;
-      let otherPlayerMoves = OthelloGame.getValidMoves(room.gameState.board, otherPlayerNum);
-
-      if (otherPlayerMoves.length === 0) {
-        // Both players have no moves, game over
-        room.gameState.gameStatus = 'finished';
-        clearInterval(roomTimers.get(data.roomId)!);
-        roomTimers.delete(data.roomId);
-        
-        const scores = OthelloGame.calculateScores(room.gameState.board);
-        if (scores[1] > scores[2]) {
-          room.gameState.winnerId = room.gameState.players.find(p => p.color === 'black')?.id;
-        } else if (scores[2] > scores[1]) {
-          room.gameState.winnerId = room.gameState.players.find(p => p.color === 'white')?.id;
-        } else {
-          room.gameState.winnerId = 'draw';
-        }
-        
-        console.log(`🏁 Game finished in room ${data.roomId}. Winner: ${room.gameState.winnerId}`);
-        
-        // Award coins to players
-        awardCoinsToPlayers(room);
-      } else {
-        // Skip turn to the other player
-        room.gameState.currentPlayer = otherPlayerNum as 1 | 2;
-        room.gameState.validMoves = otherPlayerMoves;
-        console.log(`⏭️ Turn skipped in room ${data.roomId}`);
-      }
-    }
-    
-    io.to(data.roomId).emit('gameStateUpdate', room.gameState);
-    
-    // Handle AI move if playing against AI
-    const aiPlayer = room.gameState.players.find(p => p.id === 'AI');
-    
-    if (aiPlayer && room.gameState.gameStatus === 'playing' && room.gameState.currentPlayer === (aiPlayer.color === 'black' ? 1 : 2)) {
-      // AI's turn
-      setTimeout(() => {
-        makeAIMove(data.roomId);
-      }, 1000);
-    } else if (room.gameState.gameStatus === 'playing') {
-      // Human player's turn
-      startTimer(data.roomId);
-    }
-  });
-
-  socket.on('newGame', (data: { roomId: string; isAI?: boolean; difficulty?: AIDifficulty } | string) => {
-    const roomId = typeof data === 'string' ? data : data.roomId;
-    const isAI = typeof data === 'object' ? data.isAI : false;
-    const difficulty = typeof data === 'object' ? data.difficulty : undefined;
-    
-    console.log(`🔄 New game request for room: ${roomId}`);
-    
-    const room = rooms.get(roomId);
-    if (!room) {
-      console.log(`❌ New game - Room not found: ${roomId}`);
-      return;
-    }
-    
-    if (roomTimers.has(roomId)) {
-      clearInterval(roomTimers.get(roomId)!);
-      roomTimers.delete(roomId);
-    }
-
-    // Store old player data and refresh their coins from database
-    const oldPlayers = room.gameState.players.map(p => {
-      if (p.isAuthenticated && p.id !== 'AI') {
-        // Refresh coins from database
-        const playerData = database.getPlayer(p.displayName);
-        if (playerData) {
-          return { ...p, coins: playerData.coins };
-        }
-      }
-      return { ...p };
-    });
-    
-    // Reset game state
-    room.gameState = createInitialGameState();
-    
-    if (isAI && difficulty) {
-      // AI game
-      const humanPlayerData = oldPlayers.find(p => p.id !== 'AI');
-      const aiPlayer: Player = {
-        id: 'AI',
-        nickname: 'ai',
-        displayName: `AI (${difficulty.toUpperCase()})`,
-        emoji: '🤖',
-        isReady: true,
-        color: 'white',
-        pieceEmoji: humanPlayerData?.pieceEmoji,
-        coins: 0,
-        isAuthenticated: false
-      };
-      
-      if (humanPlayerData) {
-        humanPlayerData.isReady = true;
-        humanPlayerData.color = 'black';
-        room.gameState.players = [humanPlayerData, aiPlayer];
-      } else {
-        room.gameState.players = [aiPlayer];
-      }
-      
-      room.gameState.gameStatus = 'playing';
-      room.isAIGame = true;
-      room.aiDifficulty = difficulty;
-      
-      startTimer(roomId);
-    } else {
-      // Human vs human game
-      room.gameState.players = oldPlayers.map((p, index) => ({ 
-        ...p, 
-        isReady: false,
-        color: index === 0 ? 'black' : 'white'
-      }));
-      
-      room.isAIGame = false;
-      room.aiDifficulty = undefined;
-    }
-    
-    // Clear coin transactions for new game
-    room.gameState.coinTransactions = undefined;
-    
-    console.log(`✅ New game created in room: ${roomId}`);
-    io.to(roomId).emit('gameStateUpdate', room.gameState);
-  });
-
-  socket.on('sendMessage', (data: { roomId: string; message: string }) => {
-    const room = rooms.get(data.roomId);
-    if (!room) return;
-    
-    const player = room.gameState.players.find(p => p.id === socket.id);
-    if (!player) return;
-    
-    const chatMessage: ChatMessage = {
-      id: uuidv4(),
-      playerId: socket.id,
-      playerName: player.displayName,
-      message: data.message,
-      timestamp: Date.now()
-    };
-    
-    room.messages.push(chatMessage);
-    
-    if (room.messages.length > 50) {
-      room.messages = room.messages.slice(-50);
-    }
-    
-    io.to(data.roomId).emit('newMessage', chatMessage);
-  });
-
-  socket.on('disconnect', () => {
-    console.log('🔌 User disconnected:', socket.id);
-    
-    // Remove from authenticated players
-    const disconnectedPlayer = authenticatedPlayers.get(socket.id);
-    if (disconnectedPlayer) {
-      console.log(`👋 Player disconnected: ${disconnectedPlayer.displayName}`);
-    }
-    authenticatedPlayers.delete(socket.id);
-    
-    for (const [roomId, room] of rooms.entries()) {
-      const playerIndex = room.gameState.players.findIndex(p => p.id === socket.id);
-      if (playerIndex !== -1) {
-        const disconnectedPlayerName = room.gameState.players[playerIndex].displayName;
-        console.log(`👋 Player ${disconnectedPlayerName} left room ${roomId}`);
-        
-        room.gameState.players.splice(playerIndex, 1);
-        
-        if (room.gameState.players.length === 0 || (room.gameState.players.length === 1 && room.gameState.players[0].id === 'AI')) {
-          console.log(`🧹 Cleaning up empty room: ${roomId}`);
-          if (roomTimers.has(roomId)) {
-            clearInterval(roomTimers.get(roomId)!);
-            roomTimers.delete(roomId);
-          }
-          rooms.delete(roomId);
-        } else {
-          const disconnectedPlayerColor = playerIndex === 0 ? 'black' : 'white';
-          const currentPlayerColor = room.gameState.currentPlayer === 1 ? 'black' : 'white';
-
-          if (disconnectedPlayerColor === currentPlayerColor && room.gameState.gameStatus === 'playing') {
-            // Switch turn to remaining player
-            room.gameState.currentPlayer = room.gameState.currentPlayer === 1 ? 2 : 1;
-            room.gameState.validMoves = OthelloGame.getValidMoves(room.gameState.board, room.gameState.currentPlayer);
-            
-            if (room.gameState.validMoves.length === 0 && OthelloGame.isGameOver(room.gameState.board)) {
-              room.gameState.gameStatus = 'finished';
-              if (roomTimers.has(roomId)) {
-                clearInterval(roomTimers.get(roomId)!);
-                roomTimers.delete(roomId);
-              }
-              const scores = OthelloGame.calculateScores(room.gameState.board);
-              if (scores[1] > scores[2]) {
-                room.gameState.winnerId = room.gameState.players.find(p => p.color === 'black')?.id;
-              } else if (scores[2] > scores[1]) {
-                room.gameState.winnerId = room.gameState.players.find(p => p.color === 'white')?.id;
-              } else {
-                room.gameState.winnerId = 'draw';
-              }
-              
-              // Award coins even if other player disconnected
-              awardCoinsToPlayers(room);
-            }
-          }
-          io.to(roomId).emit('gameStateUpdate', room.gameState);
-        }
-      }
-    }
-  });
-});
-
-// Health check endpoint
-app.get('/health', (req: Request, res: Response) => {
-  res.json({ 
-    status: 'OK', 
-    timestamp: new Date().toISOString(),
-    playersCount: database.getPlayerCount(),
-    activeRooms: rooms.size,
-    activeConnections: authenticatedPlayers.size
-  });
-});
-
-// API endpoint to get player stats
-app.get('/api/player/:nickname', (req: Request, res: Response) => {
-  try {
-    const nickname = req.params.nickname;
-    const playerData = database.getPlayer(nickname);
-    
-    if (playerData) {
-      res.json({
-        success: true,
-        player: playerData
-      });
-    } else {
-      res.status(404).json({
-        success: false,
-        message: 'Player not found'
-      });
-    }
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
-  }
-});
-
-// API endpoint to get leaderboard
-app.get('/api/leaderboard', (req: Request, res: Response) => {
-  try {
-    const limit = parseInt(req.query.limit as string) || 10;
-    const topPlayers = database.getTopPlayers(limit);
-    
-    res.json({
-      success: true,
-      players: topPlayers
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
-  }
-});
-
-// API endpoint to check room status
-app.get('/api/room/:roomId', (req: Request, res: Response) => {
-  try {
-    const roomId = req.params.roomId.toUpperCase();
-    const room = rooms.get(roomId);
-    
-    if (room) {
-      res.json({
-        success: true,
-        room: {
-          id: room.id,
-          playerCount: room.gameState.players.length,
-          gameStatus: room.gameState.gameStatus,
-          isAIGame: room.isAIGame || false,
-          createdAt: room.createdAt
-        }
-      });
-    } else {
-      res.status(404).json({
-        success: false,
-        message: 'Room not found'
-      });
-    }
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
-  }
-});
-
-const PORT = process.env.PORT || 3001;
-
-server.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📊 Database loaded with ${database.getPlayerCount()} players`);
-  console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 CORS enabled for: ${process.env.NODE_ENV === 'production' ? 'https://huong-othello.vercel.app' : 'http://localhost:3000'}`);
-});
