@@ -7,43 +7,58 @@ import ThemeSelector from './ThemeSelector';
 import PlayerProfile from './PlayerProfile';
 
 const MainMenu: React.FC = () => {
-  const { createRoom, joinRoom, createAIGame } = useGame();
+  const { createRoom, joinRoom, createAIGame, isJoiningRoom, joinError, clearJoinError } = useGame();
   const { currentPlayer, logoutPlayer } = useSocket();
   const [activeTab, setActiveTab] = useState<'create' | 'join' | 'ai'>('create');
   const [roomId, setRoomId] = useState('');
   const [selectedDifficulty, setSelectedDifficulty] = useState<AIDifficulty>('medium');
   const [selectedPieceStyle, setSelectedPieceStyle] = useState(PIECE_EMOJI_OPTIONS[0]);
   const [showPieceSelector, setShowPieceSelector] = useState(false);
-  const [isJoiningFromUrl, setIsJoiningFromUrl] = useState(false);
+  const [hasAutoJoined, setHasAutoJoined] = useState(false);
 
   // Auto-fill room ID from URL and automatically join if user is logged in
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const roomFromUrl = urlParams.get('room');
-    if (roomFromUrl) {
-      const upperRoomId = roomFromUrl.toUpperCase();
-      setRoomId(upperRoomId);
-      setActiveTab('join');
-      setIsJoiningFromUrl(true);
+    
+    if (roomFromUrl && !hasAutoJoined) {
+      const upperRoomId = roomFromUrl.toUpperCase().trim();
+      console.log('🔗 Room ID from URL:', upperRoomId);
       
-      // Auto-join if user is already logged in
-      if (currentPlayer && !isJoiningFromUrl) {
-        const playerData = {
-          name: currentPlayer.displayName,
-          emoji: currentPlayer.emoji,
-          pieceEmoji: selectedPieceStyle.name !== 'Cổ điển' ? {
-            black: selectedPieceStyle.black,
-            white: selectedPieceStyle.white
-          } : undefined
-        };
+      // Validate room ID format (6 characters)
+      if (upperRoomId.length === 6) {
+        setRoomId(upperRoomId);
+        setActiveTab('join');
         
-        // Small delay to ensure everything is initialized
-        setTimeout(() => {
-          joinRoom(upperRoomId, playerData);
-        }, 500);
+        // Auto-join if user is already logged in
+        if (currentPlayer) {
+          console.log('🚀 Auto-joining room:', upperRoomId);
+          setHasAutoJoined(true);
+          
+          const playerData = {
+            name: currentPlayer.displayName,
+            emoji: currentPlayer.emoji,
+            pieceEmoji: selectedPieceStyle.name !== 'Cổ điển' ? {
+              black: selectedPieceStyle.black,
+              white: selectedPieceStyle.white
+            } : undefined
+          };
+          
+          // Small delay to ensure everything is initialized
+          setTimeout(() => {
+            joinRoom(upperRoomId, playerData);
+          }, 1000);
+        }
+      } else {
+        console.log('❌ Invalid room ID format from URL:', roomFromUrl);
       }
+      
+      // Clear the room parameter from URL after processing
+      const url = new URL(window.location.href);
+      url.searchParams.delete('room');
+      window.history.replaceState({}, document.title, url.toString());
     }
-  }, [currentPlayer, joinRoom, selectedPieceStyle, isJoiningFromUrl]);
+  }, [currentPlayer, joinRoom, selectedPieceStyle, hasAutoJoined]);
 
   // Set initial piece style from current player
   useEffect(() => {
@@ -58,16 +73,12 @@ const MainMenu: React.FC = () => {
     }
   }, [currentPlayer]);
 
-  // Clear URL params after joining attempt
+  // Clear join error when switching tabs
   useEffect(() => {
-    if (isJoiningFromUrl && currentPlayer) {
-      // Clear the room parameter from URL after attempting to join
-      const url = new URL(window.location.href);
-      url.searchParams.delete('room');
-      window.history.replaceState({}, document.title, url.toString());
-      setIsJoiningFromUrl(false);
+    if (joinError) {
+      clearJoinError();
     }
-  }, [isJoiningFromUrl, currentPlayer]);
+  }, [activeTab, clearJoinError]);
 
   const handleCreateRoom = (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,6 +98,13 @@ const MainMenu: React.FC = () => {
   const handleJoinRoom = (e: React.FormEvent) => {
     e.preventDefault();
     if (currentPlayer && roomId.trim()) {
+      const trimmedRoomId = roomId.trim().toUpperCase();
+      
+      // Validate room ID format
+      if (trimmedRoomId.length !== 6) {
+        return;
+      }
+      
       const playerData = {
         name: currentPlayer.displayName,
         emoji: currentPlayer.emoji,
@@ -95,7 +113,9 @@ const MainMenu: React.FC = () => {
           white: selectedPieceStyle.white
         } : undefined
       };
-      joinRoom(roomId.trim().toUpperCase(), playerData);
+      
+      console.log('🎯 Attempting to join room:', trimmedRoomId);
+      joinRoom(trimmedRoomId, playerData);
     }
   };
 
@@ -111,6 +131,16 @@ const MainMenu: React.FC = () => {
         } : undefined
       };
       createAIGame(playerData, selectedDifficulty);
+    }
+  };
+
+  const handleRoomIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    setRoomId(value);
+    
+    // Clear join error when user starts typing
+    if (joinError) {
+      clearJoinError();
     }
   };
 
@@ -174,6 +204,27 @@ const MainMenu: React.FC = () => {
                 </button>
               ))}
             </div>
+
+            {/* Join Error Display */}
+            {joinError && (
+              <motion.div
+                className="mb-4 p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200"
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+              >
+                <div className="flex items-center space-x-2">
+                  <span className="text-red-400">⚠️</span>
+                  <span className="text-sm">{joinError}</span>
+                  <button
+                    onClick={clearJoinError}
+                    className="ml-auto text-red-400 hover:text-red-300 transition-colors"
+                  >
+                    ×
+                  </button>
+                </div>
+              </motion.div>
+            )}
 
             {/* Piece Style Selection */}
             <motion.div
@@ -248,11 +299,25 @@ const MainMenu: React.FC = () => {
                 >
                   <motion.button
                     type="submit"
-                    className="w-full py-4 rounded-xl font-bold text-lg bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white shadow-lg transition-all duration-200"
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
+                    disabled={isJoiningRoom}
+                    className={`
+                      w-full py-4 rounded-xl font-bold text-lg transition-all duration-200
+                      ${isJoiningRoom
+                        ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white shadow-lg'
+                      }
+                    `}
+                    whileHover={!isJoiningRoom ? { scale: 1.02 } : {}}
+                    whileTap={!isJoiningRoom ? { scale: 0.98 } : {}}
                   >
-                    🏠 Tạo phòng mới
+                    {isJoiningRoom ? (
+                      <div className="flex items-center justify-center space-x-2">
+                        <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                        <span>Đang tạo...</span>
+                      </div>
+                    ) : (
+                      '🏠 Tạo phòng mới'
+                    )}
                   </motion.button>
                   
                   <p className="text-gray-300 text-sm text-center">
@@ -278,31 +343,50 @@ const MainMenu: React.FC = () => {
                     <input
                       type="text"
                       value={roomId}
-                      onChange={(e) => setRoomId(e.target.value.toUpperCase())}
-                      placeholder="Nhập mã phòng..."
-                      className="w-full px-4 py-3 bg-black/20 text-white placeholder-gray-400 rounded-lg border border-gray-600 focus:border-blue-400 focus:outline-none transition-colors text-center font-mono text-lg"
+                      onChange={handleRoomIdChange}
+                      placeholder="Nhập mã phòng 6 ký tự..."
+                      className={`
+                        w-full px-4 py-3 bg-black/20 text-white placeholder-gray-400 rounded-lg border transition-colors text-center font-mono text-lg
+                        ${joinError 
+                          ? 'border-red-500 focus:border-red-400' 
+                          : 'border-gray-600 focus:border-blue-400'
+                        } focus:outline-none
+                      `}
                       maxLength={6}
+                      disabled={isJoiningRoom}
                     />
+                    {roomId.length > 0 && roomId.length !== 6 && (
+                      <p className="text-yellow-400 text-xs mt-1 text-center">
+                        Mã phòng phải có đúng 6 ký tự
+                      </p>
+                    )}
                   </div>
                   
                   <motion.button
                     type="submit"
-                    disabled={!roomId.trim()}
+                    disabled={!roomId.trim() || roomId.length !== 6 || isJoiningRoom}
                     className={`
                       w-full py-4 rounded-xl font-bold text-lg transition-all duration-200
-                      ${roomId.trim()
+                      ${(roomId.trim() && roomId.length === 6 && !isJoiningRoom)
                         ? 'bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white shadow-lg'
                         : 'bg-gray-600 text-gray-400 cursor-not-allowed'
                       }
                     `}
-                    whileHover={roomId.trim() ? { scale: 1.02 } : {}}
-                    whileTap={roomId.trim() ? { scale: 0.98 } : {}}
+                    whileHover={(roomId.trim() && roomId.length === 6 && !isJoiningRoom) ? { scale: 1.02 } : {}}
+                    whileTap={(roomId.trim() && roomId.length === 6 && !isJoiningRoom) ? { scale: 0.98 } : {}}
                   >
-                    🚀 Vào phòng
+                    {isJoiningRoom ? (
+                      <div className="flex items-center justify-center space-x-2">
+                        <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                        <span>Đang vào phòng...</span>
+                      </div>
+                    ) : (
+                      '🚀 Vào phòng'
+                    )}
                   </motion.button>
                   
                   <p className="text-gray-300 text-sm text-center">
-                    Nhập mã phòng 6 số để tham gia game
+                    Nhập mã phòng 6 ký tự để tham gia game
                   </p>
                 </motion.form>
               )}
@@ -331,15 +415,18 @@ const MainMenu: React.FC = () => {
                           key={difficulty.value}
                           type="button"
                           onClick={() => setSelectedDifficulty(difficulty.value as AIDifficulty)}
+                          disabled={isJoiningRoom}
                           className={`
                             w-full p-3 rounded-lg text-left transition-all duration-200 border-2
-                            ${selectedDifficulty === difficulty.value
+                            ${isJoiningRoom
+                              ? 'border-gray-700 bg-gray-800/50 text-gray-500 cursor-not-allowed'
+                              : selectedDifficulty === difficulty.value
                               ? 'border-yellow-400 bg-yellow-400/20 text-white'
                               : 'border-gray-600 bg-black/20 text-gray-300 hover:border-gray-500'
                             }
                           `}
-                          whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.98 }}
+                          whileHover={!isJoiningRoom ? { scale: 1.02 } : {}}
+                          whileTap={!isJoiningRoom ? { scale: 0.98 } : {}}
                         >
                           <div className="font-semibold">{difficulty.label}</div>
                           <div className="text-sm text-gray-400">{difficulty.desc}</div>
@@ -350,11 +437,25 @@ const MainMenu: React.FC = () => {
                   
                   <motion.button
                     type="submit"
-                    className="w-full py-4 rounded-xl font-bold text-lg bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white shadow-lg transition-all duration-200"
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
+                    disabled={isJoiningRoom}
+                    className={`
+                      w-full py-4 rounded-xl font-bold text-lg transition-all duration-200
+                      ${isJoiningRoom
+                        ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white shadow-lg'
+                      }
+                    `}
+                    whileHover={!isJoiningRoom ? { scale: 1.02 } : {}}
+                    whileTap={!isJoiningRoom ? { scale: 0.98 } : {}}
                   >
-                    🤖 Chơi với AI
+                    {isJoiningRoom ? (
+                      <div className="flex items-center justify-center space-x-2">
+                        <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                        <span>Đang tạo game...</span>
+                      </div>
+                    ) : (
+                      '🤖 Chơi với AI'
+                    )}
                   </motion.button>
                   
                   <p className="text-gray-300 text-sm text-center">
