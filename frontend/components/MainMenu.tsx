@@ -15,13 +15,25 @@ const MainMenu: React.FC = () => {
   const [selectedPieceStyle, setSelectedPieceStyle] = useState(PIECE_EMOJI_OPTIONS[0]);
   const [showPieceSelector, setShowPieceSelector] = useState(false);
 
-  // Auto-fill room ID from URL
+  // Auto-fill room ID from URL and switch to join tab
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const roomFromUrl = urlParams.get('room');
-    if (roomFromUrl) {
-      setRoomId(roomFromUrl.toUpperCase());
+    
+    console.log('🔍 URL params check:', { roomFromUrl, fullUrl: window.location.href });
+    
+    if (roomFromUrl && roomFromUrl.trim().length > 0) {
+      const cleanRoomId = roomFromUrl.trim().toUpperCase();
+      console.log('✅ Room ID found in URL:', cleanRoomId);
+      
+      setRoomId(cleanRoomId);
       setActiveTab('join');
+      
+      // Clean URL after extracting room ID (optional)
+      if (window.history.replaceState) {
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+      }
     }
   }, []);
 
@@ -41,6 +53,8 @@ const MainMenu: React.FC = () => {
   const handleCreateRoom = (e: React.FormEvent) => {
     e.preventDefault();
     if (currentPlayer) {
+      console.log('🏠 Creating room with player:', currentPlayer.displayName);
+      
       const playerData = {
         name: currentPlayer.displayName,
         emoji: currentPlayer.emoji,
@@ -49,28 +63,45 @@ const MainMenu: React.FC = () => {
           white: selectedPieceStyle.white
         } : undefined
       };
+      
       createRoom(playerData);
     }
   };
 
   const handleJoinRoom = (e: React.FormEvent) => {
     e.preventDefault();
-    if (currentPlayer && roomId.trim()) {
-      const playerData = {
-        name: currentPlayer.displayName,
-        emoji: currentPlayer.emoji,
-        pieceEmoji: selectedPieceStyle.name !== 'Cổ điển' ? {
-          black: selectedPieceStyle.black,
-          white: selectedPieceStyle.white
-        } : undefined
-      };
-      joinRoom(roomId.trim().toUpperCase(), playerData);
+    
+    const trimmedRoomId = roomId.trim().toUpperCase();
+    
+    if (!currentPlayer) {
+      console.error('❌ No current player when trying to join room');
+      return;
     }
+    
+    if (!trimmedRoomId) {
+      console.error('❌ No room ID provided');
+      return;
+    }
+    
+    console.log('🚀 Joining room:', { roomId: trimmedRoomId, player: currentPlayer.displayName });
+
+    const playerData = {
+      name: currentPlayer.displayName,
+      emoji: currentPlayer.emoji,
+      pieceEmoji: selectedPieceStyle.name !== 'Cổ điển' ? {
+        black: selectedPieceStyle.black,
+        white: selectedPieceStyle.white
+      } : undefined
+    };
+    
+    joinRoom(trimmedRoomId, playerData);
   };
 
   const handleCreateAIGame = (e: React.FormEvent) => {
     e.preventDefault();
     if (currentPlayer) {
+      console.log('🤖 Creating AI game with difficulty:', selectedDifficulty);
+      
       const playerData = {
         name: currentPlayer.displayName,
         emoji: currentPlayer.emoji,
@@ -79,8 +110,15 @@ const MainMenu: React.FC = () => {
           white: selectedPieceStyle.white
         } : undefined
       };
+      
       createAIGame(playerData, selectedDifficulty);
     }
+  };
+
+  // Input change handler for room ID
+  const handleRoomIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.toUpperCase();
+    setRoomId(value);
   };
 
   if (!currentPlayer) {
@@ -247,11 +285,17 @@ const MainMenu: React.FC = () => {
                     <input
                       type="text"
                       value={roomId}
-                      onChange={(e) => setRoomId(e.target.value.toUpperCase())}
+                      onChange={handleRoomIdChange}
                       placeholder="Nhập mã phòng..."
                       className="w-full px-4 py-3 bg-black/20 text-white placeholder-gray-400 rounded-lg border border-gray-600 focus:border-blue-400 focus:outline-none transition-colors text-center font-mono text-lg"
                       maxLength={6}
+                      autoComplete="off"
                     />
+                    {roomId && (
+                      <p className="text-xs text-gray-400 mt-1 text-center">
+                        Mã phòng: <span className="font-mono text-white">{roomId}</span>
+                      </p>
+                    )}
                   </div>
                   
                   <motion.button
@@ -271,7 +315,7 @@ const MainMenu: React.FC = () => {
                   </motion.button>
                   
                   <p className="text-gray-300 text-sm text-center">
-                    Nhập mã phòng 6 số để tham gia game
+                    Nhập mã phòng 6 ký tự để tham gia game
                   </p>
                 </motion.form>
               )}
@@ -338,6 +382,19 @@ const MainMenu: React.FC = () => {
               className="mt-8 text-center text-gray-400 text-sm"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
+            >
+              <p>🎮 Zui zẻ hong quạo 🎮</p>
+              <p className="mt-1">Made by huongcute hehe</p>
+            </motion.div>
+          </motion.div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default MainMenu; }}
               transition={{ delay: 0.5 }}
             >
               <p>🎮 Zui zẻ hong quạo 🎮</p>
@@ -503,11 +560,17 @@ const MainMenu: React.FC = () => {
                     <input
                       type="text"
                       value={roomId}
-                      onChange={(e) => setRoomId(e.target.value.toUpperCase())}
+                      onChange={handleRoomIdChange}
                       placeholder="Nhập mã phòng..."
                       className="w-full px-4 py-3 bg-black/20 text-white placeholder-gray-400 rounded-lg border border-gray-600 focus:border-blue-400 focus:outline-none transition-colors text-center font-mono text-lg"
                       maxLength={6}
+                      autoComplete="off"
                     />
+                    {roomId && (
+                      <p className="text-xs text-gray-400 mt-1 text-center">
+                        Mã phòng: <span className="font-mono text-white">{roomId}</span>
+                      </p>
+                    )}
                   </div>
                   
                   <motion.button
@@ -527,7 +590,7 @@ const MainMenu: React.FC = () => {
                   </motion.button>
                   
                   <p className="text-gray-300 text-sm text-center">
-                    Nhập mã phòng 6 số để tham gia game
+                    Nhập mã phòng 6 ký tự để tham gia game
                   </p>
                 </motion.form>
               )}
@@ -593,17 +656,4 @@ const MainMenu: React.FC = () => {
             <motion.div
               className="mt-8 text-center text-gray-400 text-sm"
               initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.5 }}
-            >
-              <p>🎮 Zui zẻ hong quạo 🎮</p>
-              <p className="mt-1">Made by huongcute hehe</p>
-            </motion.div>
-          </motion.div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default MainMenu;
+              animate={{ opacity: 1
