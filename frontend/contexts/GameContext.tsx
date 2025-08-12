@@ -55,14 +55,20 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
 
     console.log('🔌 GameContext: Setting up socket event listeners');
 
-    // Clear previous listeners
-    socket.removeAllListeners('roomCreated');
-    socket.removeAllListeners('roomJoined');
-    socket.removeAllListeners('aiGameCreated');
-    socket.removeAllListeners('gameStateUpdate');
-    socket.removeAllListeners('newMessage');
-    socket.removeAllListeners('timerUpdate');
-    socket.removeAllListeners('error');
+    // Clear previous listeners to prevent duplicates
+    const eventNames = [
+      'roomCreated',
+      'roomJoined', 
+      'aiGameCreated',
+      'gameStateUpdate',
+      'newMessage',
+      'timerUpdate',
+      'error'
+    ];
+
+    eventNames.forEach(eventName => {
+      socket.removeAllListeners(eventName);
+    });
 
     // Socket event listeners
     socket.on('roomCreated', (data: { roomId: string; gameState: GameState }) => {
@@ -177,13 +183,9 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
 
     return () => {
       console.log('🧹 GameContext: Cleaning up socket listeners');
-      socket.off('roomCreated');
-      socket.off('roomJoined');
-      socket.off('aiGameCreated');
-      socket.off('gameStateUpdate');
-      socket.off('newMessage');
-      socket.off('timerUpdate');
-      socket.off('error');
+      eventNames.forEach(eventName => {
+        socket.off(eventName);
+      });
     };
   }, [socket, isConnected]);
 
@@ -205,27 +207,57 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
       return;
     }
     
-    if (!roomId || roomId.trim().length !== 6) {
-      toast.error('Mã phòng phải có 6 ký tự!');
+    const trimmedRoomId = roomId.trim().toUpperCase();
+    
+    if (!trimmedRoomId || trimmedRoomId.length !== 6) {
+      const errorMsg = 'Mã phòng phải có đúng 6 ký tự!';
+      setJoinError(errorMsg);
+      toast.error(errorMsg);
       return;
     }
     
-    console.log('🚀 Joining room:', roomId, 'with player data:', playerData);
+    // Validate room ID format (alphanumeric only)
+    if (!/^[A-Z0-9]{6}$/.test(trimmedRoomId)) {
+      const errorMsg = 'Mã phòng chỉ được chứa chữ cái và số!';
+      setJoinError(errorMsg);
+      toast.error(errorMsg);
+      return;
+    }
+    
+    console.log('🚀 Joining room:', trimmedRoomId, 'with player data:', playerData);
     setIsJoiningRoom(true);
     setJoinError(null);
-    socket.emit('joinRoom', { roomId: roomId.trim().toUpperCase(), playerData });
+    
+    // Emit join room event
+    socket.emit('joinRoom', { roomId: trimmedRoomId, playerData });
     
     // Set timeout for join attempt
-    setTimeout(() => {
+    const joinTimeout = setTimeout(() => {
       if (isJoiningRoom) {
         setIsJoiningRoom(false);
-        if (!gameState || gameState.players.length < 2) {
-          const errorMsg = `Không thể vào phòng ${roomId}. Phòng có thể không tồn tại hoặc đã đầy.`;
-          setJoinError(errorMsg);
-          toast.error(errorMsg);
-        }
+        const errorMsg = `Không thể vào phòng ${trimmedRoomId}. Phòng có thể không tồn tại hoặc đã đầy.`;
+        setJoinError(errorMsg);
+        toast.error(errorMsg);
       }
-    }, 10000); // 10 second timeout
+    }, 15000); // 15 second timeout
+
+    // Clear timeout if join is successful
+    const originalRoomJoinedHandler = socket.listeners('roomJoined')[0];
+    socket.once('roomJoined', (...args) => {
+      clearTimeout(joinTimeout);
+      if (originalRoomJoinedHandler) {
+        originalRoomJoinedHandler(...args);
+      }
+    });
+
+    // Clear timeout if error occurs
+    const originalErrorHandler = socket.listeners('error')[0];
+    socket.once('error', (...args) => {
+      clearTimeout(joinTimeout);
+      if (originalErrorHandler) {
+        originalErrorHandler(...args);
+      }
+    });
   };
 
   const createAIGame = (playerData: { name: string; emoji: string; pieceEmoji?: { black: string; white: string } }, difficulty: AIDifficulty) => {
