@@ -656,4 +656,18 @@ export default MainMenu; }}
             <motion.div
               className="mt-8 text-center text-gray-400 text-sm"
               initial={{ opacity: 0 }}
-              animate={{ opacity: 1
+              animate={{ opacity: 1 }}
+               transition={{ delay: 0.5 }}
+            >
+              <p>🎮 Zui zẻ hong quạo 🎮</p>
+              <p className="mt-1">Made by huongcute hehe</p>
+            </motion.div>
+          </motion.div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+
