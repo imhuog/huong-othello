@@ -240,7 +240,7 @@ socket.on('playerReady', (roomId: string) => {
       }
     }
   });
-});
+
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {
@@ -327,7 +327,7 @@ app.get('/api/leaderboard', (req: Request, res: Response) => {
       success: true,
       players: topPlayers
     });
-  }import { Request, Response } from 'express';
+  import { Request, Response } from 'express';
 
 import express from 'express';
 import { createServer } from 'http';
@@ -1174,3 +1174,4 @@ io.on('connection', (socket) => {
     console.log(`✅ AI game created: ${roomId} - ${data.difficulty} difficulty`);
     socket.emit('aiGameCreated', { roomId, gameState, difficulty: data.difficulty });
   });
+
