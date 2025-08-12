@@ -13,13 +13,12 @@ import { PlayerModel, LoginRequest, LoginResponse, getCoinChangeForResult, getRe
 const app = express();
 const server = createServer(app);
 
-
 // Middleware
 app.use(helmet());
 app.use(compression());
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? ['https://your-vercel-domain.vercel.app'] 
+    ? ['https://huong-othello.vercel.app', 'https://your-vercel-domain.vercel.app'] 
     : ['http://localhost:3000'], // Frontend Next.js port
   credentials: true
 }));
@@ -28,7 +27,7 @@ app.use(express.json());
 const io = new Server(server, {
   cors: {
     origin: process.env.NODE_ENV === 'production' 
-      ? ['https://your-vercel-domain.vercel.app'] 
+      ? ['https://huong-othello.vercel.app', 'https://your-vercel-domain.vercel.app'] 
       : ['http://localhost:3000'], // Frontend Next.js port
     methods: ["GET", "POST"]
   }
@@ -61,7 +60,7 @@ interface GameState {
   winnerId?: string;
   lastMove?: { row: number; col: number; playerId: string };
   coinTransactions?: { playerId: string; nickname: string; oldCoins: number; newCoins: number; coinChange: number; result: string }[];
-    coinsAwarded?: { playerId: string; amount: number; result: 'win' | 'lose' | 'draw' }; // Add this line
+  coinsAwarded?: { playerId: string; amount: number; result: 'win' | 'lose' | 'draw' };
 }
 
 interface Room {
@@ -70,6 +69,7 @@ interface Room {
   messages: ChatMessage[];
   isAIGame?: boolean;
   aiDifficulty?: AIDifficulty;
+  createdAt: number; // Add timestamp for room cleanup
 }
 
 interface ChatMessage {
@@ -90,6 +90,30 @@ enum AIDifficulty {
 const rooms = new Map<string, Room>();
 const roomTimers = new Map<string, NodeJS.Timeout>();
 const authenticatedPlayers = new Map<string, PlayerModel>(); // socketId -> PlayerModel
+
+// Clean up old empty rooms periodically
+setInterval(() => {
+  const now = Date.now();
+  const ROOM_TIMEOUT = 60 * 60 * 1000; // 1 hour
+  
+  for (const [roomId, room] of rooms.entries()) {
+    // Remove rooms that are older than 1 hour and have no players
+    if ((now - room.createdAt > ROOM_TIMEOUT && room.gameState.players.length === 0) ||
+        // Remove rooms older than 24 hours regardless
+        (now - room.createdAt > 24 * 60 * 60 * 1000)) {
+      
+      console.log(`🧹 Cleaning up old room: ${roomId}`);
+      
+      // Clear timer if exists
+      if (roomTimers.has(roomId)) {
+        clearInterval(roomTimers.get(roomId)!);
+        roomTimers.delete(roomId);
+      }
+      
+      rooms.delete(roomId);
+    }
+  }
+}, 30 * 60 * 1000); // Run every 30 minutes
 
 // Helper function to create Player from database data
 function createPlayerFromData(socketId: string, playerData: PlayerData, emoji: string, pieceEmoji?: any): Player {
@@ -147,7 +171,7 @@ function awardCoinsToPlayers(room: Room): void {
       result: player1Result
     });
 
-      // Set coinsAwarded for the player who won (or got coins from draw)
+    // Set coinsAwarded for the player who won (or got coins from draw)
     if (coinChange > 0) {
       room.gameState.coinsAwarded = {
         playerId: player1.id,
@@ -176,7 +200,7 @@ function awardCoinsToPlayers(room: Room): void {
       result: player2Result
     });
 
-        // Set coinsAwarded for the player who won (or got more coins from draw)
+    // Set coinsAwarded for the player who won (or got more coins from draw)
     // If both players get coins (draw), prioritize the one with higher amount or player2
     if (coinChange > 0 && (!room.gameState.coinsAwarded || coinChange >= room.gameState.coinsAwarded.amount)) {
       room.gameState.coinsAwarded = {
@@ -400,7 +424,22 @@ class OthelloGame {
 
 // Helper functions
 function generateRoomId(): string {
-  return Math.random().toString(36).substr(2, 6).toUpperCase();
+  let roomId;
+  let attempts = 0;
+  const maxAttempts = 100;
+  
+  do {
+    roomId = Math.random().toString(36).substr(2, 6).toUpperCase();
+    attempts++;
+  } while (rooms.has(roomId) && attempts < maxAttempts);
+  
+  if (attempts >= maxAttempts) {
+    // Fallback to UUID-based room ID if we can't generate a unique one
+    roomId = uuidv4().substr(0, 6).toUpperCase();
+  }
+  
+  console.log(`🔑 Generated room ID: ${roomId} (attempts: ${attempts})`);
+  return roomId;
 }
 
 function createInitialGameState(): GameState {
@@ -560,7 +599,7 @@ function makeAIMove(roomId: string) {
 
 // Socket.io event handlers
 io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
+  console.log('🔌 User connected:', socket.id);
 
   // **FIXED: Player login/authentication with better logging**
   socket.on('loginPlayer', (data: LoginRequest) => {
@@ -668,9 +707,12 @@ io.on('connection', (socket) => {
   });
 
   socket.on('createRoom', (playerData: { name: string; emoji: string; pieceEmoji?: { black: string; white: string } }) => {
+    console.log('🏠 Creating room request:', { socketId: socket.id, playerData });
+    
     // Check if player is authenticated
     const authenticatedPlayer = authenticatedPlayers.get(socket.id);
     if (!authenticatedPlayer) {
+      console.log('❌ Unauthenticated create room attempt');
       socket.emit('error', 'Bạn cần đăng nhập trước khi tạo phòng');
       return;
     }
@@ -696,19 +738,24 @@ io.on('connection', (socket) => {
       id: roomId,
       gameState,
       messages: [],
-      isAIGame: false
+      isAIGame: false,
+      createdAt: Date.now()
     };
     
     rooms.set(roomId, room);
     socket.join(roomId);
     
+    console.log(`✅ Room created: ${roomId} by ${authenticatedPlayer.displayName}`);
     socket.emit('roomCreated', { roomId, gameState });
   });
 
   socket.on('joinRoom', (data: { roomId: string; playerData: { name: string; emoji: string; pieceEmoji?: { black: string; white: string } } }) => {
+    console.log('🚀 Joining room request:', { socketId: socket.id, data });
+    
     // Check if player is authenticated
     const authenticatedPlayer = authenticatedPlayers.get(socket.id);
     if (!authenticatedPlayer) {
+      console.log('❌ Unauthenticated join room attempt');
       socket.emit('error', 'Bạn cần đăng nhập trước khi vào phòng');
       return;
     }
@@ -717,12 +764,23 @@ io.on('connection', (socket) => {
     const room = rooms.get(roomId);
     
     if (!room) {
-      socket.emit('error', 'Room not found');
+      console.log(`❌ Room not found: ${roomId}`);
+      console.log(`🔍 Available rooms: ${Array.from(rooms.keys()).join(', ')}`);
+      socket.emit('error', `Không tìm thấy phòng ${roomId}. Vui lòng kiểm tra lại mã phòng.`);
       return;
     }
     
     if (room.gameState.players.length >= 2) {
-      socket.emit('error', 'Room is full');
+      console.log(`❌ Room ${roomId} is full`);
+      socket.emit('error', 'Phòng đã đầy. Vui lòng thử phòng khác.');
+      return;
+    }
+    
+    // Check if player is already in the room
+    const existingPlayer = room.gameState.players.find(p => p.id === socket.id);
+    if (existingPlayer) {
+      console.log(`⚠️ Player ${authenticatedPlayer.displayName} already in room ${roomId}`);
+      socket.emit('roomJoined', { roomId, gameState: room.gameState });
       return;
     }
     
@@ -741,14 +799,18 @@ io.on('connection', (socket) => {
     room.gameState.players.push(player);
     socket.join(roomId);
     
+    console.log(`✅ Player joined room: ${authenticatedPlayer.displayName} -> ${roomId}`);
     io.to(roomId).emit('gameStateUpdate', room.gameState);
     socket.emit('roomJoined', { roomId, gameState: room.gameState });
   });
 
   socket.on('createAIGame', (data: { playerData: { name: string; emoji: string; pieceEmoji?: { black: string; white: string } }; difficulty: AIDifficulty }) => {
+    console.log('🤖 Creating AI game request:', { socketId: socket.id, data });
+    
     // Check if player is authenticated
     const authenticatedPlayer = authenticatedPlayers.get(socket.id);
     if (!authenticatedPlayer) {
+      console.log('❌ Unauthenticated AI game attempt');
       socket.emit('error', 'Bạn cần đăng nhập trước khi chơi với AI');
       return;
     }
@@ -788,7 +850,8 @@ io.on('connection', (socket) => {
       gameState,
       messages: [],
       isAIGame: true,
-      aiDifficulty: data.difficulty
+      aiDifficulty: data.difficulty,
+      createdAt: Date.now()
     };
     
     rooms.set(roomId, room);
@@ -796,12 +859,16 @@ io.on('connection', (socket) => {
     
     startTimer(roomId);
     
+    console.log(`✅ AI game created: ${roomId} by ${authenticatedPlayer.displayName} vs AI ${data.difficulty}`);
     socket.emit('aiGameCreated', { roomId, gameState, difficulty: data.difficulty });
   });
 
   socket.on('playerReady', (roomId: string) => {
     const room = rooms.get(roomId);
-    if (!room) return;
+    if (!room) {
+      console.log(`❌ Player ready - Room not found: ${roomId}`);
+      return;
+    }
     
     const player = room.gameState.players.find(p => p.id === socket.id);
     if (player) {
@@ -821,6 +888,7 @@ io.on('connection', (socket) => {
       if (room.gameState.players.length === 2 && room.gameState.players.every(p => p.isReady)) {
         room.gameState.gameStatus = 'playing';
         startTimer(roomId);
+        console.log(`🎮 Game started in room: ${roomId}`);
       }
       
       io.to(roomId).emit('gameStateUpdate', room.gameState);
@@ -829,14 +897,25 @@ io.on('connection', (socket) => {
 
   socket.on('makeMove', (data: { roomId: string; row: number; col: number; difficulty?: AIDifficulty }) => {
     const room = rooms.get(data.roomId);
-    if (!room || room.gameState.gameStatus !== 'playing') return;
+    if (!room || room.gameState.gameStatus !== 'playing') {
+      console.log(`❌ Invalid move - Room: ${data.roomId}, Status: ${room?.gameState.gameStatus}`);
+      return;
+    }
     
     const currentPlayerObj = room.gameState.players.find(p => p.color === (room.gameState.currentPlayer === 1 ? 'black' : 'white'));
     
-    if (!currentPlayerObj || currentPlayerObj.id !== socket.id) return;
+    if (!currentPlayerObj || currentPlayerObj.id !== socket.id) {
+      console.log(`❌ Invalid move - Not player's turn: ${socket.id}`);
+      return;
+    }
 
     const validMove = room.gameState.validMoves.some(([r, c]) => r === data.row && c === data.col);
-    if (!validMove) return;
+    if (!validMove) {
+      console.log(`❌ Invalid move - Position not valid: [${data.row}, ${data.col}]`);
+      return;
+    }
+    
+    console.log(`🎯 Valid move made: ${currentPlayerObj.displayName} at [${data.row}, ${data.col}]`);
     
     // Make the move
     room.gameState.board = OthelloGame.makeMove(room.gameState.board, data.row, data.col, room.gameState.currentPlayer);
@@ -868,12 +947,15 @@ io.on('connection', (socket) => {
           room.gameState.winnerId = 'draw';
         }
         
+        console.log(`🏁 Game finished in room ${data.roomId}. Winner: ${room.gameState.winnerId}`);
+        
         // Award coins to players
         awardCoinsToPlayers(room);
       } else {
         // Skip turn to the other player
         room.gameState.currentPlayer = otherPlayerNum as 1 | 2;
         room.gameState.validMoves = otherPlayerMoves;
+        console.log(`⏭️ Turn skipped in room ${data.roomId}`);
       }
     }
     
@@ -898,8 +980,13 @@ io.on('connection', (socket) => {
     const isAI = typeof data === 'object' ? data.isAI : false;
     const difficulty = typeof data === 'object' ? data.difficulty : undefined;
     
+    console.log(`🔄 New game request for room: ${roomId}`);
+    
     const room = rooms.get(roomId);
-    if (!room) return;
+    if (!room) {
+      console.log(`❌ New game - Room not found: ${roomId}`);
+      return;
+    }
     
     if (roomTimers.has(roomId)) {
       clearInterval(roomTimers.get(roomId)!);
@@ -964,6 +1051,7 @@ io.on('connection', (socket) => {
     // Clear coin transactions for new game
     room.gameState.coinTransactions = undefined;
     
+    console.log(`✅ New game created in room: ${roomId}`);
     io.to(roomId).emit('gameStateUpdate', room.gameState);
   });
 
@@ -992,17 +1080,25 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
+    console.log('🔌 User disconnected:', socket.id);
     
     // Remove from authenticated players
+    const disconnectedPlayer = authenticatedPlayers.get(socket.id);
+    if (disconnectedPlayer) {
+      console.log(`👋 Player disconnected: ${disconnectedPlayer.displayName}`);
+    }
     authenticatedPlayers.delete(socket.id);
     
     for (const [roomId, room] of rooms.entries()) {
       const playerIndex = room.gameState.players.findIndex(p => p.id === socket.id);
       if (playerIndex !== -1) {
+        const disconnectedPlayerName = room.gameState.players[playerIndex].displayName;
+        console.log(`👋 Player ${disconnectedPlayerName} left room ${roomId}`);
+        
         room.gameState.players.splice(playerIndex, 1);
         
-        if (room.gameState.players.length === 0) {
+        if (room.gameState.players.length === 0 || (room.gameState.players.length === 1 && room.gameState.players[0].id === 'AI')) {
+          console.log(`🧹 Cleaning up empty room: ${roomId}`);
           if (roomTimers.has(roomId)) {
             clearInterval(roomTimers.get(roomId)!);
             roomTimers.delete(roomId);
@@ -1012,7 +1108,8 @@ io.on('connection', (socket) => {
           const disconnectedPlayerColor = playerIndex === 0 ? 'black' : 'white';
           const currentPlayerColor = room.gameState.currentPlayer === 1 ? 'black' : 'white';
 
-          if (disconnectedPlayerColor === currentPlayerColor) {
+          if (disconnectedPlayerColor === currentPlayerColor && room.gameState.gameStatus === 'playing') {
+            // Switch turn to remaining player
             room.gameState.currentPlayer = room.gameState.currentPlayer === 1 ? 2 : 1;
             room.gameState.validMoves = OthelloGame.getValidMoves(room.gameState.board, room.gameState.currentPlayer);
             
@@ -1048,7 +1145,8 @@ app.get('/health', (req: Request, res: Response) => {
     status: 'OK', 
     timestamp: new Date().toISOString(),
     playersCount: database.getPlayerCount(),
-    activeRooms: rooms.size
+    activeRooms: rooms.size,
+    activeConnections: authenticatedPlayers.size
   });
 });
 
@@ -1095,14 +1193,42 @@ app.get('/api/leaderboard', (req: Request, res: Response) => {
   }
 });
 
+// API endpoint to check room status
+app.get('/api/room/:roomId', (req: Request, res: Response) => {
+  try {
+    const roomId = req.params.roomId.toUpperCase();
+    const room = rooms.get(roomId);
+    
+    if (room) {
+      res.json({
+        success: true,
+        room: {
+          id: room.id,
+          playerCount: room.gameState.players.length,
+          gameStatus: room.gameState.gameStatus,
+          isAIGame: room.isAIGame || false,
+          createdAt: room.createdAt
+        }
+      });
+    } else {
+      res.status(404).json({
+        success: false,
+        message: 'Room not found'
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
 const PORT = process.env.PORT || 3001;
 
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Database loaded with ${database.getPlayerCount()} players`);
   console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 CORS enabled for: ${process.env.NODE_ENV === 'production' ? 'https://your-vercel-domain.vercel.app' : 'http://localhost:3000'}`);
+  console.log(`🔗 CORS enabled for: ${process.env.NODE_ENV === 'production' ? 'https://huong-othello.vercel.app' : 'http://localhost:3000'}`);
 });
-
-
-
