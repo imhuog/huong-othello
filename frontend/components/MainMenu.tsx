@@ -394,7 +394,7 @@ const MainMenu: React.FC = () => {
   );
 };
 
-export default MainMenu; }}
+export default MainMenu; 
               transition={{ delay: 0.5 }}
             >
               <p>🎮 Zui zẻ hong quạo 🎮</p>
@@ -668,6 +668,7 @@ export default MainMenu; }}
     </div>
   );
 };
+
 
 
 
