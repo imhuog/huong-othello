@@ -33,10 +33,12 @@ export const useVoiceChat = (options: UseVoiceChatOptions): UseVoiceChatReturn =
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   
-  // Check WebRTC support
+  // Check WebRTC support - Fixed the condition
   const isSupported = !!(
+    typeof navigator !== 'undefined' &&
     navigator.mediaDevices &&
-    navigator.mediaDevices.getUserMedia &&
+    typeof navigator.mediaDevices.getUserMedia === 'function' &&
+    typeof window !== 'undefined' &&
     window.RTCPeerConnection
   );
 
