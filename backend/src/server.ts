@@ -13,7 +13,6 @@ import { PlayerModel, LoginRequest, LoginResponse, getCoinChangeForResult, getRe
 const app = express();
 const server = createServer(app);
 
-
 // Middleware
 app.use(helmet());
 app.use(compression());
@@ -34,6 +33,24 @@ const io = new Server(server, {
   }
 });
 
+// **Voice Chat Types - THÊM MỚI**
+interface VoiceSignalData {
+  type: 'offer' | 'answer' | 'ice-candidate' | 'voice-state-change' | 'voice-mute' | 'voice-unmute';
+  from: string;
+  to: string;
+  data?: any;
+  muted?: boolean;
+  deafened?: boolean;
+}
+
+interface VoiceParticipant {
+  playerId: string;
+  playerName: string;
+  isMuted: boolean;
+  isDeafened: boolean;
+  isConnected: boolean;
+}
+
 // Game state interfaces
 interface Player {
   id: string;
@@ -48,6 +65,12 @@ interface Player {
   };
   coins: number;
   isAuthenticated: boolean;
+  // **Voice Chat - THÊM MỚI**
+  voiceState?: {
+    isMuted: boolean;
+    isDeafened: boolean;
+    isConnected: boolean;
+  };
 }
 
 interface GameState {
@@ -62,6 +85,11 @@ interface GameState {
   lastMove?: { row: number; col: number; playerId: string };
   coinTransactions?: { playerId: string; nickname: string; oldCoins: number; newCoins: number; coinChange: number; result: string }[];
   coinsAwarded?: { playerId: string; amount: number; result: 'win' | 'lose' | 'draw' };
+  // **Voice Chat - THÊM MỚI**
+  voiceChat?: {
+    enabled: boolean;
+    participants: VoiceParticipant[];
+  };
 }
 
 interface Room {
@@ -72,6 +100,8 @@ interface Room {
   aiDifficulty?: AIDifficulty;
   createdAt: number;
   lastActivity: number;
+  // **Voice Chat - THÊM MỚI**
+  voiceParticipants: Map<string, VoiceParticipant>;
 }
 
 interface ChatMessage {
@@ -124,7 +154,13 @@ function createPlayerFromData(socketId: string, playerData: PlayerData, emoji: s
     isReady: false,
     coins: playerData.coins,
     pieceEmoji: pieceEmoji,
-    isAuthenticated: true
+    isAuthenticated: true,
+    // **Voice Chat - THÊM MỚI**
+    voiceState: {
+      isMuted: false,
+      isDeafened: false,
+      isConnected: false
+    }
   };
 }
 
@@ -215,7 +251,7 @@ function awardCoinsToPlayers(room: Room): void {
   room.gameState.coinTransactions = coinTransactions;
 }
 
-// Othello game logic (unchanged)
+// Othello game logic (unchanged from original code)
 class OthelloGame {
   static DIRECTIONS = [
     [-1, -1], [-1, 0], [-1, 1],
@@ -337,7 +373,7 @@ class OthelloGame {
     return player1Moves.length === 0 && player2Moves.length === 0;
   }
 
-  // AI logic (unchanged)
+  // AI logic (unchanged from original)
   static makeAIMove(board: (number | null)[][], difficulty: AIDifficulty): number[] | null {
     const validMoves = this.getValidMoves(board, 2);
     if (validMoves.length === 0) return null;
@@ -452,7 +488,12 @@ function createInitialGameState(): GameState {
     gameStatus: 'waiting',
     scores: { 1: 2, 2: 2 },
     validMoves: OthelloGame.getValidMoves(OthelloGame.createEmptyBoard(), 1),
-    timeLeft: 30
+    timeLeft: 30,
+    // **Voice Chat - THÊM MỚI**
+    voiceChat: {
+      enabled: true,
+      participants: []
+    }
   };
 }
 
@@ -609,13 +650,73 @@ function makeAIMove(roomId: string) {
   }
 }
 
+// **Voice Chat Helper Functions - THÊM MỚI**
+function updateVoiceParticipant(roomId: string, playerId: string, updates: Partial<VoiceParticipant>): void {
+  const room = rooms.get(roomId);
+  if (!room) return;
+
+  const existing = room.voiceParticipants.get(playerId);
+  if (existing) {
+    room.voiceParticipants.set(playerId, { ...existing, ...updates });
+  }
+
+  // Update game state voice chat info
+  if (room.gameState.voiceChat) {
+    room.gameState.voiceChat.participants = Array.from(room.voiceParticipants.values());
+  }
+
+  // Broadcast voice state change
+  io.to(roomId).emit('voiceStateChanged', {
+    playerId,
+    voiceState: room.voiceParticipants.get(playerId)
+  });
+}
+
+function addVoiceParticipant(roomId: string, playerId: string, playerName: string): void {
+  const room = rooms.get(roomId);
+  if (!room) return;
+
+  const participant: VoiceParticipant = {
+    playerId,
+    playerName,
+    isMuted: false,
+    isDeafened: false,
+    isConnected: true
+  };
+
+  room.voiceParticipants.set(playerId, participant);
+
+  // Update game state
+  if (room.gameState.voiceChat) {
+    room.gameState.voiceChat.participants = Array.from(room.voiceParticipants.values());
+  }
+
+  // Broadcast to room
+  io.to(roomId).emit('voiceParticipantJoined', participant);
+}
+
+function removeVoiceParticipant(roomId: string, playerId: string): void {
+  const room = rooms.get(roomId);
+  if (!room) return;
+
+  room.voiceParticipants.delete(playerId);
+
+  // Update game state
+  if (room.gameState.voiceChat) {
+    room.gameState.voiceChat.participants = Array.from(room.voiceParticipants.values());
+  }
+
+  // Broadcast to room
+  io.to(roomId).emit('voiceParticipantLeft', { playerId });
+}
+
 // Socket.io event handlers
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
   // **FIXED: Player login/authentication with better logging**
   socket.on('loginPlayer', (data: LoginRequest) => {
-    console.log('🔍 Login request received:', { socketId: socket.id, nickname: data.nickname, emoji: data.emoji });
+    console.log('🔐 Login request received:', { socketId: socket.id, nickname: data.nickname, emoji: data.emoji });
     
     try {
       const { nickname, emoji, pieceEmoji } = data;
@@ -665,7 +766,13 @@ io.on('connection', (socket) => {
           winRate: playerData.gamesPlayed > 0 ? Math.round((playerData.gamesWon / playerData.gamesPlayed) * 100) : 0
         },
         lastPlayed: playerData.lastPlayed,
-        createdAt: playerData.createdAt
+        createdAt: playerData.createdAt,
+        // **Voice Chat - THÊM MỚI**
+        voiceState: {
+          isMuted: false,
+          isDeafened: false,
+          isConnected: false
+        }
       };
       
       // Store authenticated player
@@ -742,7 +849,13 @@ io.on('connection', (socket) => {
         color: 'black',
         pieceEmoji: playerData.pieceEmoji,
         coins: authenticatedPlayer.coins,
-        isAuthenticated: true
+        isAuthenticated: true,
+        // **Voice Chat - THÊM MỚI**
+        voiceState: {
+          isMuted: false,
+          isDeafened: false,
+          isConnected: false
+        }
       };
       
       gameState.players.push(player);
@@ -753,7 +866,9 @@ io.on('connection', (socket) => {
         messages: [],
         isAIGame: false,
         createdAt: Date.now(),
-        lastActivity: Date.now()
+        lastActivity: Date.now(),
+        // **Voice Chat - THÊM MỚI**
+        voiceParticipants: new Map()
       };
       
       rooms.set(roomId, room);
@@ -819,7 +934,13 @@ io.on('connection', (socket) => {
         color: 'white',
         pieceEmoji: playerData.pieceEmoji,
         coins: authenticatedPlayer.coins,
-        isAuthenticated: true
+        isAuthenticated: true,
+        // **Voice Chat - THÊM MỚI**
+        voiceState: {
+          isMuted: false,
+          isDeafened: false,
+          isConnected: false
+        }
       };
       
       room.gameState.players.push(player);
@@ -861,7 +982,13 @@ io.on('connection', (socket) => {
         color: 'black',
         pieceEmoji: data.playerData.pieceEmoji,
         coins: authenticatedPlayer.coins,
-        isAuthenticated: true
+        isAuthenticated: true,
+        // **Voice Chat - THÊM MỚI**
+        voiceState: {
+          isMuted: false,
+          isDeafened: false,
+          isConnected: false
+        }
       };
       
       const aiPlayer: Player = {
@@ -886,7 +1013,9 @@ io.on('connection', (socket) => {
         isAIGame: true,
         aiDifficulty: data.difficulty,
         createdAt: Date.now(),
-        lastActivity: Date.now()
+        lastActivity: Date.now(),
+        // **Voice Chat - THÊM MỚI** (AI game không cần voice chat)
+        voiceParticipants: new Map()
       };
       
       rooms.set(roomId, room);
@@ -901,6 +1030,98 @@ io.on('connection', (socket) => {
       console.error('💥 Create AI game error:', error);
       socket.emit('error', 'Không thể tạo game với AI. Vui lòng thử lại.');
     }
+  });
+
+  // **Voice Chat Events - THÊM MỚI**
+  socket.on('voiceSignal', (data: VoiceSignalData) => {
+    console.log('🎙️ Voice signal received:', data.type, 'from:', data.from, 'to:', data.to);
+    
+    try {
+      // Find the room where this player is
+      let targetRoomId: string | null = null;
+      for (const [roomId, room] of rooms.entries()) {
+        if (room.gameState.players.some(p => p.id === socket.id)) {
+          targetRoomId = roomId;
+          break;
+        }
+      }
+
+      if (!targetRoomId) {
+        console.log('❌ Voice signal failed: Player not in any room');
+        return;
+      }
+
+      updateRoomActivity(targetRoomId);
+
+      // Handle voice state changes
+      if (data.type === 'voice-state-change') {
+        updateVoiceParticipant(targetRoomId, data.from, {
+          isMuted: data.muted || false,
+          isDeafened: data.deafened || false
+        });
+      }
+
+      // Forward signal to target player or all players in room
+      if (data.to === 'all') {
+        socket.to(targetRoomId).emit('voiceSignal', data);
+      } else {
+        // Find target socket
+        const room = rooms.get(targetRoomId);
+        if (room) {
+          const targetPlayer = room.gameState.players.find(p => p.id === data.to);
+          if (targetPlayer) {
+            socket.to(data.to).emit('voiceSignal', data);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('❌ Voice signal handling error:', error);
+    }
+  });
+
+  socket.on('joinVoiceChat', (roomId: string) => {
+    console.log('🎙️ Player joining voice chat:', socket.id, 'in room:', roomId);
+    
+    const room = rooms.get(roomId);
+    if (!room) {
+      socket.emit('error', 'Phòng không tồn tại');
+      return;
+    }
+
+    const player = room.gameState.players.find(p => p.id === socket.id);
+    if (!player) {
+      socket.emit('error', 'Bạn không ở trong phòng này');
+      return;
+    }
+
+    // Add to voice participants
+    addVoiceParticipant(roomId, socket.id, player.displayName);
+    
+    // Update player voice state
+    if (player.voiceState) {
+      player.voiceState.isConnected = true;
+    }
+
+    updateRoomActivity(roomId);
+    io.to(roomId).emit('gameStateUpdate', room.gameState);
+  });
+
+  socket.on('leaveVoiceChat', (roomId: string) => {
+    console.log('🔇 Player leaving voice chat:', socket.id, 'from room:', roomId);
+    
+    const room = rooms.get(roomId);
+    if (!room) return;
+
+    const player = room.gameState.players.find(p => p.id === socket.id);
+    if (player && player.voiceState) {
+      player.voiceState.isConnected = false;
+      player.voiceState.isMuted = false;
+      player.voiceState.isDeafened = false;
+    }
+
+    removeVoiceParticipant(roomId, socket.id);
+    updateRoomActivity(roomId);
+    io.to(roomId).emit('gameStateUpdate', room.gameState);
   });
 
   socket.on('playerReady', (roomId: string) => {
@@ -1078,7 +1299,9 @@ io.on('connection', (socket) => {
       room.gameState.players = oldPlayers.map((p, index) => ({ 
         ...p, 
         isReady: false,
-        color: index === 0 ? 'black' : 'white'
+        color: index === 0 ? 'black' : 'white',
+        // Reset voice state for new game
+        voiceState: p.voiceState ? { ...p.voiceState, isConnected: false } : undefined
       }));
       
       room.isAIGame = false;
@@ -1087,6 +1310,12 @@ io.on('connection', (socket) => {
     
     // Clear coin transactions for new game
     room.gameState.coinTransactions = undefined;
+    
+    // Reset voice participants for new game
+    room.voiceParticipants.clear();
+    if (room.gameState.voiceChat) {
+      room.gameState.voiceChat.participants = [];
+    }
     
     io.to(roomId).emit('gameStateUpdate', room.gameState);
   });
@@ -1275,3 +1504,4 @@ server.listen(PORT, () => {
   console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 CORS enabled for: ${process.env.NODE_ENV === 'production' ? 'https://huong-othello.vercel.app' : 'http://localhost:3000'}`);
 });
+
