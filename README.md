@@ -136,6 +136,8 @@ othello-game/
 ├── backend/
 │   ├── src/
 │   │   └── server.ts          # Socket.io server + game logic
+             database.ts
+   /models/Player.ts
 │   ├── package.json
 │   └── tsconfig.json
 ├── frontend/
@@ -145,6 +147,8 @@ othello-game/
 │   │   ├── GameInfo.tsx       # Thông tin game
 │   │   ├── MainMenu.tsx       # Menu chính
 │   │   └── ThemeSelector.tsx  # Chọn theme
+            VoiceChat.tsx
+            VoiceControls.tsx
 │   ├── contexts/
 │   │   ├── GameContext.tsx    # Game state management
 │   │   └── SocketContext.tsx  # Socket connection
@@ -229,3 +233,4 @@ MIT License - Free to use and modify.
 ---
 
 🎮 **Chúc bạn chơi game vui vẻ!** 🎮
+
