@@ -8,6 +8,33 @@ export interface ThemeColors {
   background: string; // Background cho container bàn cờ
 }
 
+// **Voice Chat Types - THÊM MỚI**
+export interface VoiceChatState {
+  isConnected: boolean;
+  isMuted: boolean;
+  isDeafened: boolean;
+  participants: VoiceParticipant[];
+  connectionStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
+}
+
+export interface VoiceParticipant {
+  playerId: string;
+  playerName: string;
+  isMuted: boolean;
+  isDeafened: boolean;
+  isSpeaking: boolean;
+  volume: number;
+}
+
+export interface VoiceSignalData {
+  type: 'offer' | 'answer' | 'ice-candidate' | 'voice-state-change' | 'voice-mute' | 'voice-unmute';
+  from: string;
+  to: string;
+  data?: any;
+  muted?: boolean;
+  deafened?: boolean;
+}
+
 export const BOARD_THEMES: ThemeColors[] = [
   {
     name: 'Cổ điển',
@@ -155,8 +182,13 @@ export interface GameState {
   validMoves: [number, number][];
   timeLeft: number;
   winnerId?: string;
-  coinTransactions?: CoinTransaction[]; // Thêm thông tin giao dịch xu
-  coinsAwarded?: CoinsAwarded; // Thêm thuộc tính này để fix lỗi
+  coinTransactions?: CoinTransaction[];
+  coinsAwarded?: CoinsAwarded;
+  // **Voice Chat - THÊM MỚI**
+  voiceChat?: {
+    enabled: boolean;
+    participants: VoiceParticipant[];
+  };
 }
 
 export interface Player {
@@ -174,6 +206,12 @@ export interface Player {
     white: string;
   };
   stats?: PlayerStats; // Thống kê player
+  // **Voice Chat - THÊM MỚI**
+  voiceState?: {
+    isMuted: boolean;
+    isDeafened: boolean;
+    isConnected: boolean;
+  };
 }
 
 export interface PlayerStats {
@@ -236,7 +274,13 @@ export interface PlayerModel {
   isAuthenticated: boolean;
   lastPlayed?: string;
   createdAt?: string;
-    isNewPlayer?: boolean; // Thêm dòng này
+  isNewPlayer?: boolean;
+  // **Voice Chat - THÊM MỚI**
+  voiceState?: {
+    isMuted: boolean;
+    isDeafened: boolean;
+    isConnected: boolean;
+  };
 }
 
 // Danh sách emoji có sẵn cho avatar
@@ -252,28 +296,28 @@ export const AVAILABLE_EMOJIS = [
   '😱', '😖', '😣', '😞', '😓', '😩', '😫', '🥱', '😤', '😡',
   '😠', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺',
   '👻', '👽', '👾', '🤖', '🎃', '😺', '😸', '😹', '😻', '😼',
-  '😽', '🙀', '😿', '😾', '👋', '🤚', '🖐️', '✋', '🖖', '👌',
+  '😽', '🙀', '😿', '😾', '💋', '🤚', '🖐️', '✋', '🖖', '👌',
 ];
 
 // Danh sách các cặp emoji cho quân cờ
 export const PIECE_EMOJI_OPTIONS = [
   { name: 'Cổ điển', black: '⚫', white: '⚪' },
-{ name: 'Đỏ Xanh', black: '🔴', white: '🔵' },
-  { name: 'Động vật', black: '🐯', white: '🐑' },
-{ name: 'Animal', black: '🐰', white: '🐳' },
+  { name: 'Đỏ Xanh', black: '🔴', white: '🔵' },
+  { name: 'Động vật', black: '🐯', white: '🐰' },
+  { name: 'Animal', black: '🐰', white: '🐳' },
   { name: 'Trái cây', black: '🍇', white: '🥥' },
-{ name: 'Hoa quả', black: '🍓', white: '🍊' },
-{ name: 'Caro', black: '❌', white: '⭕' },
-{ name: 'Tan vỡ', black: '💔', white: '🙅' },
+  { name: 'Hoa quả', black: '🍓', white: '🍊' },
+  { name: 'Caro', black: '❌', white: '⭕' },
+  { name: 'Tan vỡ', black: '💔', white: '🙅' },
   { name: 'Hoa', black: '🌺', white: '🌼' },
-  { name: 'Thể thao', black: '⚽', white: '🏐' },
+  { name: 'Thể thao', black: '⚽', white: '🏀' },
   { name: 'Âm nhạc', black: '🎵', white: '🎶' },
   { name: 'Giàu có', black: '💎', white: '💸' },
   { name: 'Thực phẩm', black: '🍫', white: '🥛' },
   { name: 'Giao thông', black: '🚗', white: '🚕' },
   { name: 'Vũ trụ', black: '🌑', white: '🌕' },
- { name: 'Mặt trăng ôm mặt trời', black: '🌜', white: '🌞' },
-{ name: 'Thời tiết', black: '🌤️', white: '⛈️' },
+  { name: 'Mặt trăng âm mặt trời', black: '🌜', white: '🌞' },
+  { name: 'Thời tiết', black: '🌤️', white: '⛈️' },
   { name: 'Biểu tượng', black: '❤️', white: '💙' },
   { name: 'Hình học', black: '⬛', white: '⬜' },
   { name: 'Ma thuật', black: '🔮', white: '💫' },
@@ -301,7 +345,7 @@ export const getResultMessage = (result: 'win' | 'lose' | 'draw', coinChange: nu
     case 'draw':
       return `🤝 Hòa! Bạn được ${changeText} xu!`;
     case 'lose':
-      return `😔 Bạn thua và bị trừ ${Math.abs(coinChange)} xu`;
+      return `😓 Bạn thua và bị trừ ${Math.abs(coinChange)} xu`;
     default:
       return '';
   }
