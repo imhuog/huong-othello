@@ -65,6 +65,7 @@ export const useVoiceChat = (options: UseVoiceChatOptions): UseVoiceChatReturn =
       if (event.candidate && options.playerId) {
         sendVoiceSignal({
           type: 'ice-candidate',
+          userId: options.playerId,
           from: options.playerId,
           to: remotePlayerId,
           data: event.candidate
@@ -217,7 +218,8 @@ export const useVoiceChat = (options: UseVoiceChatOptions): UseVoiceChatReturn =
       // Notify other participants
       if (options.playerId) {
         sendVoiceSignal({
-          type: 'voice-state-change',
+          type: 'mute',
+          userId: options.playerId,
           from: options.playerId,
           to: 'all',
           muted: newMuted
@@ -277,6 +279,7 @@ export const useVoiceChat = (options: UseVoiceChatOptions): UseVoiceChatReturn =
 
           sendVoiceSignal({
             type: 'answer',
+            userId: options.playerId,
             from: options.playerId,
             to: data.from,
             data: answer
@@ -300,7 +303,8 @@ export const useVoiceChat = (options: UseVoiceChatOptions): UseVoiceChatReturn =
           break;
         }
 
-        case 'voice-state-change': {
+        case 'voice-state-change':
+        case 'mute': {
           setVoiceState(prev => ({
             ...prev,
             participants: prev.participants.map(p =>
@@ -335,6 +339,7 @@ export const useVoiceChat = (options: UseVoiceChatOptions): UseVoiceChatReturn =
 
     sendVoiceSignal({
       type: 'offer',
+      userId: options.playerId,
       from: options.playerId,
       to: remotePlayerId,
       data: offer
