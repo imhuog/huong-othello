@@ -1,31 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSocket } from '../contexts/SocketContext';
-import { VoiceChatState, VoiceSignalData, VoiceParticipant } from '../types';
-import toast from 'react-hot-toast';
-
-// useVoiceChat.ts
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useSocket } from '../contexts/SocketContext';
 import { VoiceChatState, VoiceSignalData, VoiceParticipant, getDefaultVoiceSettings } from '../types';
 import toast from 'react-hot-toast';
-
-// ... interface UseVoiceChatOptions
-
-const [voiceState, setVoiceState] = useState<VoiceChatState>({
-  isConnected: false,
-  isMuted: false,
-  isDeafened: false,
-  isRecording: false, // ← Thêm
-  isMicOn: false, // ← Thêm
-  isSpeakerOn: true, // ← Thêm
-  participants: [],
-  connectedPeers: new Set<string>(), // ← Thêm
-  speakingUsers: new Set<string>(), // ← Thêm
-  connectionStatus: 'disconnected',
-  currentUser: undefined, // ← Thêm nếu thiếu
-  error: undefined, // ← Thêm nếu thiếu
-  settings: getDefaultVoiceSettings() // ← Thêm
-});
 
 interface UseVoiceChatOptions {
   roomId?: string;
@@ -49,15 +25,23 @@ export const useVoiceChat = (options: UseVoiceChatOptions): UseVoiceChatReturn =
     isConnected: false,
     isMuted: false,
     isDeafened: false,
+    isRecording: false,
+    isMicOn: false,
+    isSpeakerOn: true,
     participants: [],
-    connectionStatus: 'disconnected'
+    connectedPeers: new Set<string>(),
+    speakingUsers: new Set<string>(),
+    connectionStatus: 'disconnected',
+    currentUser: undefined,
+    error: undefined,
+    settings: getDefaultVoiceSettings()
   });
 
   const localStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   
-  // Check WebRTC support - Fixed the condition
+  // Check WebRTC support
   const isSupported = !!(
     typeof navigator !== 'undefined' &&
     navigator.mediaDevices &&
@@ -108,7 +92,7 @@ export const useVoiceChat = (options: UseVoiceChatOptions): UseVoiceChatReturn =
       setVoiceState(prev => ({
         ...prev,
         participants: prev.participants.map(p =>
-          p.playerId === remotePlayerId
+          p.userId === remotePlayerId
             ? { ...p, isConnected: true }
             : p
         )
@@ -147,6 +131,7 @@ export const useVoiceChat = (options: UseVoiceChatOptions): UseVoiceChatReturn =
       setVoiceState(prev => ({
         ...prev,
         isConnected: true,
+        isMicOn: true,
         connectionStatus: 'connected'
       }));
 
@@ -196,8 +181,16 @@ export const useVoiceChat = (options: UseVoiceChatOptions): UseVoiceChatReturn =
       isConnected: false,
       isMuted: false,
       isDeafened: false,
+      isRecording: false,
+      isMicOn: false,
+      isSpeakerOn: true,
       participants: [],
-      connectionStatus: 'disconnected'
+      connectedPeers: new Set<string>(),
+      speakingUsers: new Set<string>(),
+      connectionStatus: 'disconnected',
+      currentUser: undefined,
+      error: undefined,
+      settings: getDefaultVoiceSettings()
     });
 
     toast.success('Đã ngắt kết nối voice chat!', {
@@ -212,8 +205,14 @@ export const useVoiceChat = (options: UseVoiceChatOptions): UseVoiceChatReturn =
 
     const audioTrack = localStreamRef.current.getAudioTracks()[0];
     if (audioTrack) {
-      audioTrack.enabled = voiceState.isMuted;
-      setVoiceState(prev => ({ ...prev, isMuted: !prev.isMuted }));
+      const newMuted = !voiceState.isMuted;
+      audioTrack.enabled = !newMuted;
+      
+      setVoiceState(prev => ({ 
+        ...prev, 
+        isMuted: newMuted,
+        isMicOn: !newMuted
+      }));
       
       // Notify other participants
       if (options.playerId) {
@@ -221,12 +220,12 @@ export const useVoiceChat = (options: UseVoiceChatOptions): UseVoiceChatReturn =
           type: 'voice-state-change',
           from: options.playerId,
           to: 'all',
-          muted: !voiceState.isMuted
+          muted: newMuted
         });
       }
 
-      toast.success(voiceState.isMuted ? 'Đã bật mic' : 'Đã tắt mic', {
-        icon: voiceState.isMuted ? '🎙️' : '🔇',
+      toast.success(newMuted ? 'Đã tắt mic' : 'Đã bật mic', {
+        icon: newMuted ? '🔇' : '🎙️',
         duration: 1000
       });
     }
@@ -241,7 +240,11 @@ export const useVoiceChat = (options: UseVoiceChatOptions): UseVoiceChatReturn =
       audio.volume = newDeafened ? 0 : 1;
     });
 
-    setVoiceState(prev => ({ ...prev, isDeafened: newDeafened }));
+    setVoiceState(prev => ({ 
+      ...prev, 
+      isDeafened: newDeafened,
+      isSpeakerOn: !newDeafened
+    }));
 
     toast.success(newDeafened ? 'Đã tắt loa' : 'Đã bật loa', {
       icon: newDeafened ? '🔇' : '🔊',
@@ -301,7 +304,7 @@ export const useVoiceChat = (options: UseVoiceChatOptions): UseVoiceChatReturn =
           setVoiceState(prev => ({
             ...prev,
             participants: prev.participants.map(p =>
-              p.playerId === data.from
+              p.userId === data.from
                 ? { ...p, isMuted: data.muted || false }
                 : p
             )
