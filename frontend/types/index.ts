@@ -1,4 +1,4 @@
-// types.ts - Cập nhật định nghĩa theme và player options
+// types.ts - Cập nhật định nghĩa theme và player options với Voice Chat
 
 export interface ThemeColors {
   name: string;
@@ -6,33 +6,6 @@ export interface ThemeColors {
   light: string;  // Class CSS cho ô sáng
   dark: string;   // Class CSS cho ô tối
   background: string; // Background cho container bàn cờ
-}
-
-// **Voice Chat Types - THÊM MỚI**
-export interface VoiceChatState {
-  isConnected: boolean;
-  isMuted: boolean;
-  isDeafened: boolean;
-  participants: VoiceParticipant[];
-  connectionStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
-}
-
-export interface VoiceParticipant {
-  playerId: string;
-  playerName: string;
-  isMuted: boolean;
-  isDeafened: boolean;
-  isSpeaking: boolean;
-  volume: number;
-}
-
-export interface VoiceSignalData {
-  type: 'offer' | 'answer' | 'ice-candidate' | 'voice-state-change' | 'voice-mute' | 'voice-unmute';
-  from: string;
-  to: string;
-  data?: any;
-  muted?: boolean;
-  deafened?: boolean;
 }
 
 export const BOARD_THEMES: ThemeColors[] = [
@@ -172,7 +145,7 @@ export interface CoinsAwarded {
   result: 'win' | 'lose' | 'draw';
 }
 
-// Player và Game state interfaces - Updated
+// Player và Game state interfaces - Updated with Voice Chat support
 export interface GameState {
   board: (number | null)[][];
   players: Player[];
@@ -182,13 +155,8 @@ export interface GameState {
   validMoves: [number, number][];
   timeLeft: number;
   winnerId?: string;
-  coinTransactions?: CoinTransaction[];
-  coinsAwarded?: CoinsAwarded;
-  // **Voice Chat - THÊM MỚI**
-  voiceChat?: {
-    enabled: boolean;
-    participants: VoiceParticipant[];
-  };
+  coinTransactions?: CoinTransaction[]; // Thêm thông tin giao dịch xu
+  coinsAwarded?: CoinsAwarded; // Thêm thuộc tính này để fix lỗi
 }
 
 export interface Player {
@@ -200,18 +168,13 @@ export interface Player {
   isReady: boolean;
   coins: number; // Luôn có coins
   isAuthenticated: boolean; // Đã đăng nhập với nickname
+  isVoiceConnected?: boolean; // NEW: Voice chat connection status
   // Thêm thuộc tính cho quân cờ tùy chỉnh
   pieceEmoji?: {
     black: string;
     white: string;
   };
   stats?: PlayerStats; // Thống kê player
-  // **Voice Chat - THÊM MỚI**
-  voiceState?: {
-    isMuted: boolean;
-    isDeafened: boolean;
-    isConnected: boolean;
-  };
 }
 
 export interface PlayerStats {
@@ -272,15 +235,60 @@ export interface PlayerModel {
   };
   stats?: PlayerStats;
   isAuthenticated: boolean;
+  isVoiceConnected?: boolean; // NEW: Voice chat status
   lastPlayed?: string;
   createdAt?: string;
-  isNewPlayer?: boolean;
-  // **Voice Chat - THÊM MỚI**
-  voiceState?: {
-    isMuted: boolean;
-    isDeafened: boolean;
-    isConnected: boolean;
-  };
+  isNewPlayer?: boolean; // Thêm dòng này
+}
+
+// NEW: Voice Chat interfaces
+export interface VoiceSettings {
+  micVolume: number;
+  speakerVolume: number;
+  noiseSuppression: boolean;
+  echoCancellation: boolean;
+  autoGainControl: boolean;
+}
+
+export interface VoiceChatState {
+  isConnected: boolean;
+  isMicOn: boolean;
+  isSpeakerOn: boolean;
+  connectedPeers: Set<string>;
+  speakingUsers: Set<string>;
+  settings: VoiceSettings;
+}
+
+// WebRTC signaling message types
+export interface VoiceOffer {
+  roomId: string;
+  offer: RTCSessionDescriptionInit;
+  targetPeerId: string;
+}
+
+export interface VoiceAnswer {
+  roomId: string;
+  answer: RTCSessionDescriptionInit;
+  targetPeerId: string;
+}
+
+export interface VoiceIceCandidate {
+  roomId: string;
+  candidate: RTCIceCandidateInit;
+  targetPeerId: string;
+}
+
+export interface VoiceUserJoined {
+  peerId: string;
+}
+
+export interface VoiceUserLeft {
+  peerId: string;
+}
+
+export interface UserSpeaking {
+  userId: string;
+  speaking: boolean;
 }
 
 // Danh sách emoji có sẵn cho avatar
@@ -296,14 +304,14 @@ export const AVAILABLE_EMOJIS = [
   '😱', '😖', '😣', '😞', '😓', '😩', '😫', '🥱', '😤', '😡',
   '😠', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺',
   '👻', '👽', '👾', '🤖', '🎃', '😺', '😸', '😹', '😻', '😼',
-  '😽', '🙀', '😿', '😾', '💋', '🤚', '🖐️', '✋', '🖖', '👌',
+  '😽', '🙀', '😿', '😾', '👋', '🤚', '🖐️', '✋', '🖖', '👌',
 ];
 
 // Danh sách các cặp emoji cho quân cờ
 export const PIECE_EMOJI_OPTIONS = [
   { name: 'Cổ điển', black: '⚫', white: '⚪' },
   { name: 'Đỏ Xanh', black: '🔴', white: '🔵' },
-  { name: 'Động vật', black: '🐯', white: '🐰' },
+  { name: 'Động vật', black: '🯁', white: '🐑' },
   { name: 'Animal', black: '🐰', white: '🐳' },
   { name: 'Trái cây', black: '🍇', white: '🥥' },
   { name: 'Hoa quả', black: '🍓', white: '🍊' },
@@ -345,8 +353,33 @@ export const getResultMessage = (result: 'win' | 'lose' | 'draw', coinChange: nu
     case 'draw':
       return `🤝 Hòa! Bạn được ${changeText} xu!`;
     case 'lose':
-      return `😓 Bạn thua và bị trừ ${Math.abs(coinChange)} xu`;
+      return `😔 Bạn thua và bị trừ ${Math.abs(coinChange)} xu`;
     default:
       return '';
   }
+};
+
+// Voice Chat utility functions
+export const getDefaultVoiceSettings = (): VoiceSettings => ({
+  micVolume: 80,
+  speakerVolume: 70,
+  noiseSuppression: true,
+  echoCancellation: true,
+  autoGainControl: true
+});
+
+export const checkWebRTCSupport = (): boolean => {
+  const hasWebRTC = !!(window.RTCPeerConnection || (window as any).webkitRTCPeerConnection);
+  const hasGetUserMedia = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  return hasWebRTC && hasGetUserMedia;
+};
+
+// Voice Chat error messages
+export const VOICE_CHAT_ERRORS = {
+  NOT_SUPPORTED: 'Trình duyệt của bạn không hỗ trợ voice chat',
+  MIC_PERMISSION_DENIED: 'Không thể truy cập microphone. Vui lòng cấp quyền và thử lại.',
+  CONNECTION_FAILED: 'Không thể kết nối voice chat. Vui lòng thử lại.',
+  ROOM_NOT_FOUND: 'Phòng không tồn tại',
+  NOT_IN_ROOM: 'Bạn không ở trong phòng này',
+  PEER_CONNECTION_FAILED: 'Không thể kết nối với người chơi khác'
 };
