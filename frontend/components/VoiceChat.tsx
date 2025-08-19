@@ -81,9 +81,9 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ roomId }) => {
           
           const isSpeaking = volume > 10; // Threshold for speaking detection
           if (isSpeaking) {
-          (socket as any)?.emit('userSpeaking', { roomId, speaking: true });
+            (socket as any)?.emit('userSpeaking', { roomId, speaking: true });
           } else {
-          (socket as any)?.emit('userSpeaking', { roomId, speaking: false });
+            (socket as any)?.emit('userSpeaking', { roomId, speaking: false });
           }
         }
         
@@ -146,7 +146,11 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ roomId }) => {
     pc.onconnectionstatechange = () => {
       console.log(`Peer connection with ${peerId}:`, pc.connectionState);
       if (pc.connectionState === 'connected') {
-        setConnectedPeers(prev => new Set([...prev, peerId]));
+        setConnectedPeers(prev => {
+          const newSet = new Set(prev);
+          newSet.add(peerId);
+          return newSet;
+        });
       } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
         setConnectedPeers(prev => {
           const newSet = new Set(prev);
@@ -284,7 +288,7 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ roomId }) => {
     if (!socket) return;
 
     const handleVoiceUserJoined = async ({ peerId }: { peerId: string }) => {
-      if (peerId === socket.id || !localStreamRef.current) return;
+      if (peerId === (socket as any).id || !localStreamRef.current) return;
       
       const pc = createPeerConnection(peerId);
       peerConnectionsRef.current.set(peerId, pc);
@@ -293,7 +297,7 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ roomId }) => {
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         
-        socket.emit('voiceOffer', {
+        (socket as any).emit('voiceOffer', {
           roomId,
           offer,
           targetPeerId: peerId
@@ -314,7 +318,7 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ roomId }) => {
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         
-        socket.emit('voiceAnswer', {
+        (socket as any).emit('voiceAnswer', {
           roomId,
           answer,
           targetPeerId: fromPeerId
@@ -380,20 +384,20 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ roomId }) => {
     };
 
     // Register socket event handlers
-    socket.on('voiceUserJoined', handleVoiceUserJoined);
-    socket.on('voiceOffer', handleVoiceOffer);
-    socket.on('voiceAnswer', handleVoiceAnswer);
-    socket.on('voiceIceCandidate', handleVoiceIceCandidate);
-    socket.on('userSpeaking', handleUserSpeaking);
-    socket.on('voiceUserLeft', handleVoiceUserLeft);
+    (socket as any).on('voiceUserJoined', handleVoiceUserJoined);
+    (socket as any).on('voiceOffer', handleVoiceOffer);
+    (socket as any).on('voiceAnswer', handleVoiceAnswer);
+    (socket as any).on('voiceIceCandidate', handleVoiceIceCandidate);
+    (socket as any).on('userSpeaking', handleUserSpeaking);
+    (socket as any).on('voiceUserLeft', handleVoiceUserLeft);
 
     return () => {
-      socket.off('voiceUserJoined', handleVoiceUserJoined);
-      socket.off('voiceOffer', handleVoiceOffer);
-      socket.off('voiceAnswer', handleVoiceAnswer);
-      socket.off('voiceIceCandidate', handleVoiceIceCandidate);
-      socket.off('userSpeaking', handleUserSpeaking);
-      socket.off('voiceUserLeft', handleVoiceUserLeft);
+      (socket as any).off('voiceUserJoined', handleVoiceUserJoined);
+      (socket as any).off('voiceOffer', handleVoiceOffer);
+      (socket as any).off('voiceAnswer', handleVoiceAnswer);
+      (socket as any).off('voiceIceCandidate', handleVoiceIceCandidate);
+      (socket as any).off('userSpeaking', handleUserSpeaking);
+      (socket as any).off('voiceUserLeft', handleVoiceUserLeft);
     };
   }, [socket, roomId, isMicOn, localStreamRef.current]);
 
@@ -458,7 +462,7 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ roomId }) => {
             )}
             
             {/* Speaking indicator */}
-            {isMicOn && speakingUsers.has(socket?.id || '') && (
+            {isMicOn && speakingUsers.has((socket as any)?.id || '') && (
               <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full animate-pulse" />
             )}
           </button>
@@ -491,7 +495,7 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ roomId }) => {
           <div className="mt-2 flex items-center space-x-2">
             <span className="text-xs text-gray-400">Đang nói:</span>
             {gameState.players
-              .filter(player => speakingUsers.has(player.id) && player.id !== socket?.id)
+              .filter(player => speakingUsers.has(player.id) && player.id !== (socket as any)?.id)
               .map(player => (
                 <div key={player.id} className="flex items-center space-x-1">
                   <span className="text-xs">{player.emoji}</span>
@@ -499,7 +503,7 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ roomId }) => {
                   <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
                 </div>
               ))}
-            {!gameState.players.some(player => speakingUsers.has(player.id) && player.id !== socket?.id) && (
+            {!gameState.players.some(player => speakingUsers.has(player.id) && player.id !== (socket as any)?.id) && (
               <span className="text-xs text-gray-500">Không ai</span>
             )}
           </div>
