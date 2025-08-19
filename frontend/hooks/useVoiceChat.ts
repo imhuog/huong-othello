@@ -3,6 +3,30 @@ import { useSocket } from '../contexts/SocketContext';
 import { VoiceChatState, VoiceSignalData, VoiceParticipant } from '../types';
 import toast from 'react-hot-toast';
 
+// useVoiceChat.ts
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSocket } from '../contexts/SocketContext';
+import { VoiceChatState, VoiceSignalData, VoiceParticipant, getDefaultVoiceSettings } from '../types';
+import toast from 'react-hot-toast';
+
+// ... interface UseVoiceChatOptions
+
+const [voiceState, setVoiceState] = useState<VoiceChatState>({
+  isConnected: false,
+  isMuted: false,
+  isDeafened: false,
+  isRecording: false, // ← Thêm
+  isMicOn: false, // ← Thêm
+  isSpeakerOn: true, // ← Thêm
+  participants: [],
+  connectedPeers: new Set<string>(), // ← Thêm
+  speakingUsers: new Set<string>(), // ← Thêm
+  connectionStatus: 'disconnected',
+  currentUser: undefined, // ← Thêm nếu thiếu
+  error: undefined, // ← Thêm nếu thiếu
+  settings: getDefaultVoiceSettings() // ← Thêm
+});
+
 interface UseVoiceChatOptions {
   roomId?: string;
   playerId?: string;
