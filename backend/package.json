@@ -36,6 +36,3 @@
     "path": false
   }
 }
-
-// Backend package.json cần thêm:
-// Không cần thêm dependencies mới cho backend vì đã có socket.io
