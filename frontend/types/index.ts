@@ -34,6 +34,17 @@ export interface ThemeColors {
   background: string; // Background cho container bàn cờ
 }
 
+export interface VoiceChatState {
+  isConnected: boolean;
+  participants: VoiceParticipant[];
+  currentUser?: VoiceParticipant;
+  isRecording: boolean;
+  isMuted: boolean;
+  isDeafened: boolean; // ← Thêm dòng này
+  connectionStatus: 'disconnected' | 'connecting' | 'connected' | 'error'; // ← Thêm dòng này
+  error?: string;
+}
+
 export const BOARD_THEMES: ThemeColors[] = [
   {
     name: 'Cổ điển',
