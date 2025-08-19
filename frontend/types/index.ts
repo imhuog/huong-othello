@@ -17,13 +17,22 @@ export interface VoiceSignalData {
   type?: 'audio' | 'mute' | 'unmute' | 'join' | 'leave';
 }
 
+// ĐÃ XÓA INTERFACE TRÙNG LẶP - CHỈ GIỮ LẠI 1 VoiceChatState DUY NHẤT
 export interface VoiceChatState {
   isConnected: boolean;
   participants: VoiceParticipant[];
   currentUser?: VoiceParticipant;
   isRecording: boolean;
   isMuted: boolean;
+  isDeafened: boolean;
+  connectionStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
   error?: string;
+  // Thêm các thuộc tính từ interface thứ 2
+  isMicOn: boolean;
+  isSpeakerOn: boolean;
+  connectedPeers: Set<string>;
+  speakingUsers: Set<string>;
+  settings: VoiceSettings;
 }
 
 export interface ThemeColors {
@@ -32,17 +41,6 @@ export interface ThemeColors {
   light: string;  // Class CSS cho ô sáng
   dark: string;   // Class CSS cho ô tối
   background: string; // Background cho container bàn cờ
-}
-
-export interface VoiceChatState {
-  isConnected: boolean;
-  participants: VoiceParticipant[];
-  currentUser?: VoiceParticipant;
-  isRecording: boolean;
-  isMuted: boolean;
-  isDeafened: boolean; // ← Thêm dòng này
-  connectionStatus: 'disconnected' | 'connecting' | 'connected' | 'error'; // ← Thêm dòng này
-  error?: string;
 }
 
 export const BOARD_THEMES: ThemeColors[] = [
@@ -287,15 +285,6 @@ export interface VoiceSettings {
   autoGainControl: boolean;
 }
 
-export interface VoiceChatState {
-  isConnected: boolean;
-  isMicOn: boolean;
-  isSpeakerOn: boolean;
-  connectedPeers: Set<string>;
-  speakingUsers: Set<string>;
-  settings: VoiceSettings;
-}
-
 // WebRTC signaling message types
 export interface VoiceOffer {
   roomId: string;
@@ -341,14 +330,14 @@ export const AVAILABLE_EMOJIS = [
   '😱', '😖', '😣', '😞', '😓', '😩', '😫', '🥱', '😤', '😡',
   '😠', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺',
   '👻', '👽', '👾', '🤖', '🎃', '😺', '😸', '😹', '😻', '😼',
-  '😽', '🙀', '😿', '😾', '👋', '🤚', '🖐️', '✋', '🖖', '👌',
+  '😽', '🙀', '😿', '😾', '💋', '🤚', '🖐️', '✋', '🖖', '👌',
 ];
 
 // Danh sách các cặp emoji cho quân cờ
 export const PIECE_EMOJI_OPTIONS = [
   { name: 'Cổ điển', black: '⚫', white: '⚪' },
   { name: 'Đỏ Xanh', black: '🔴', white: '🔵' },
-  { name: 'Động vật', black: '🯁', white: '🐑' },
+  { name: 'Động vật', black: '🐯', white: '🐑' },
   { name: 'Animal', black: '🐰', white: '🐳' },
   { name: 'Trái cây', black: '🍇', white: '🥥' },
   { name: 'Hoa quả', black: '🍓', white: '🍊' },
