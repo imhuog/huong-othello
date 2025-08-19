@@ -1,5 +1,4 @@
 import { Request, Response } from 'express';
-
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -9,6 +8,23 @@ import compression from 'compression';
 import { v4 as uuidv4 } from 'uuid';
 import { database, PlayerData } from './database';
 import { PlayerModel, LoginRequest, LoginResponse, getCoinChangeForResult, getResultMessage } from './models/Player';
+
+// WebRTC Type Declarations
+declare global {
+  interface RTCSessionDescriptionInit {
+    type?: RTCSdpType;
+    sdp?: string;
+  }
+  
+  interface RTCIceCandidateInit {
+    candidate?: string;
+    sdpMid?: string | null;
+    sdpMLineIndex?: number | null;
+    usernameFragment?: string | null;
+  }
+  
+  type RTCSdpType = "answer" | "offer" | "pranswer" | "rollback";
+}
 
 const app = express();
 const server = createServer(app);
@@ -1477,3 +1493,4 @@ server.listen(PORT, () => {
   console.log(`🔗 CORS enabled for: ${process.env.NODE_ENV === 'production' ? 'https://huong-othello.vercel.app' : 'http://localhost:3000'}`);
   console.log(`🎤 Voice chat support enabled`);
 });
+
