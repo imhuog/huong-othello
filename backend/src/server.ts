@@ -33,24 +33,6 @@ const io = new Server(server, {
   }
 });
 
-// **Voice Chat Types - THÊM MỚI**
-interface VoiceSignalData {
-  type: 'offer' | 'answer' | 'ice-candidate' | 'voice-state-change' | 'voice-mute' | 'voice-unmute';
-  from: string;
-  to: string;
-  data?: any;
-  muted?: boolean;
-  deafened?: boolean;
-}
-
-interface VoiceParticipant {
-  playerId: string;
-  playerName: string;
-  isMuted: boolean;
-  isDeafened: boolean;
-  isConnected: boolean;
-}
-
 // Game state interfaces
 interface Player {
   id: string;
@@ -65,12 +47,7 @@ interface Player {
   };
   coins: number;
   isAuthenticated: boolean;
-  // **Voice Chat - THÊM MỚI**
-  voiceState?: {
-    isMuted: boolean;
-    isDeafened: boolean;
-    isConnected: boolean;
-  };
+  isVoiceConnected?: boolean; // NEW: Voice chat support
 }
 
 interface GameState {
@@ -85,11 +62,6 @@ interface GameState {
   lastMove?: { row: number; col: number; playerId: string };
   coinTransactions?: { playerId: string; nickname: string; oldCoins: number; newCoins: number; coinChange: number; result: string }[];
   coinsAwarded?: { playerId: string; amount: number; result: 'win' | 'lose' | 'draw' };
-  // **Voice Chat - THÊM MỚI**
-  voiceChat?: {
-    enabled: boolean;
-    participants: VoiceParticipant[];
-  };
 }
 
 interface Room {
@@ -100,8 +72,7 @@ interface Room {
   aiDifficulty?: AIDifficulty;
   createdAt: number;
   lastActivity: number;
-  // **Voice Chat - THÊM MỚI**
-  voiceParticipants: Map<string, VoiceParticipant>;
+  voiceConnectedUsers?: Set<string>; // NEW: Track voice-connected users
 }
 
 interface ChatMessage {
@@ -110,6 +81,38 @@ interface ChatMessage {
   playerName: string;
   message: string;
   timestamp: number;
+}
+
+// NEW: Voice chat interfaces
+interface VoiceOffer {
+  roomId: string;
+  offer: RTCSessionDescriptionInit;
+  targetPeerId: string;
+}
+
+interface VoiceAnswer {
+  roomId: string;
+  answer: RTCSessionDescriptionInit;
+  targetPeerId: string;
+}
+
+interface VoiceIceCandidate {
+  roomId: string;
+  candidate: RTCIceCandidateInit;
+  targetPeerId: string;
+}
+
+interface VoiceUserJoined {
+  peerId: string;
+}
+
+interface VoiceUserLeft {
+  peerId: string;
+}
+
+interface UserSpeaking {
+  roomId: string;
+  speaking: boolean;
 }
 
 enum AIDifficulty {  
@@ -155,12 +158,7 @@ function createPlayerFromData(socketId: string, playerData: PlayerData, emoji: s
     coins: playerData.coins,
     pieceEmoji: pieceEmoji,
     isAuthenticated: true,
-    // **Voice Chat - THÊM MỚI**
-    voiceState: {
-      isMuted: false,
-      isDeafened: false,
-      isConnected: false
-    }
+    isVoiceConnected: false // NEW: Initialize voice connection status
   };
 }
 
@@ -251,7 +249,7 @@ function awardCoinsToPlayers(room: Room): void {
   room.gameState.coinTransactions = coinTransactions;
 }
 
-// Othello game logic (unchanged from original code)
+// Othello game logic (unchanged)
 class OthelloGame {
   static DIRECTIONS = [
     [-1, -1], [-1, 0], [-1, 1],
@@ -373,7 +371,7 @@ class OthelloGame {
     return player1Moves.length === 0 && player2Moves.length === 0;
   }
 
-  // AI logic (unchanged from original)
+  // AI logic (unchanged)
   static makeAIMove(board: (number | null)[][], difficulty: AIDifficulty): number[] | null {
     const validMoves = this.getValidMoves(board, 2);
     if (validMoves.length === 0) return null;
@@ -488,12 +486,7 @@ function createInitialGameState(): GameState {
     gameStatus: 'waiting',
     scores: { 1: 2, 2: 2 },
     validMoves: OthelloGame.getValidMoves(OthelloGame.createEmptyBoard(), 1),
-    timeLeft: 30,
-    // **Voice Chat - THÊM MỚI**
-    voiceChat: {
-      enabled: true,
-      participants: []
-    }
+    timeLeft: 30
   };
 }
 
@@ -650,73 +643,13 @@ function makeAIMove(roomId: string) {
   }
 }
 
-// **Voice Chat Helper Functions - THÊM MỚI**
-function updateVoiceParticipant(roomId: string, playerId: string, updates: Partial<VoiceParticipant>): void {
-  const room = rooms.get(roomId);
-  if (!room) return;
-
-  const existing = room.voiceParticipants.get(playerId);
-  if (existing) {
-    room.voiceParticipants.set(playerId, { ...existing, ...updates });
-  }
-
-  // Update game state voice chat info
-  if (room.gameState.voiceChat) {
-    room.gameState.voiceChat.participants = Array.from(room.voiceParticipants.values());
-  }
-
-  // Broadcast voice state change
-  io.to(roomId).emit('voiceStateChanged', {
-    playerId,
-    voiceState: room.voiceParticipants.get(playerId)
-  });
-}
-
-function addVoiceParticipant(roomId: string, playerId: string, playerName: string): void {
-  const room = rooms.get(roomId);
-  if (!room) return;
-
-  const participant: VoiceParticipant = {
-    playerId,
-    playerName,
-    isMuted: false,
-    isDeafened: false,
-    isConnected: true
-  };
-
-  room.voiceParticipants.set(playerId, participant);
-
-  // Update game state
-  if (room.gameState.voiceChat) {
-    room.gameState.voiceChat.participants = Array.from(room.voiceParticipants.values());
-  }
-
-  // Broadcast to room
-  io.to(roomId).emit('voiceParticipantJoined', participant);
-}
-
-function removeVoiceParticipant(roomId: string, playerId: string): void {
-  const room = rooms.get(roomId);
-  if (!room) return;
-
-  room.voiceParticipants.delete(playerId);
-
-  // Update game state
-  if (room.gameState.voiceChat) {
-    room.gameState.voiceChat.participants = Array.from(room.voiceParticipants.values());
-  }
-
-  // Broadcast to room
-  io.to(roomId).emit('voiceParticipantLeft', { playerId });
-}
-
 // Socket.io event handlers
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
   // **FIXED: Player login/authentication with better logging**
   socket.on('loginPlayer', (data: LoginRequest) => {
-    console.log('🔐 Login request received:', { socketId: socket.id, nickname: data.nickname, emoji: data.emoji });
+    console.log('🔍 Login request received:', { socketId: socket.id, nickname: data.nickname, emoji: data.emoji });
     
     try {
       const { nickname, emoji, pieceEmoji } = data;
@@ -758,6 +691,7 @@ io.on('connection', (socket) => {
         isReady: false,
         pieceEmoji: pieceEmoji,
         isAuthenticated: true,
+        isVoiceConnected: false, // NEW: Initialize voice connection status
         stats: {
           gamesPlayed: playerData.gamesPlayed,
           gamesWon: playerData.gamesWon,
@@ -766,13 +700,7 @@ io.on('connection', (socket) => {
           winRate: playerData.gamesPlayed > 0 ? Math.round((playerData.gamesWon / playerData.gamesPlayed) * 100) : 0
         },
         lastPlayed: playerData.lastPlayed,
-        createdAt: playerData.createdAt,
-        // **Voice Chat - THÊM MỚI**
-        voiceState: {
-          isMuted: false,
-          isDeafened: false,
-          isConnected: false
-        }
+        createdAt: playerData.createdAt
       };
       
       // Store authenticated player
@@ -850,12 +778,7 @@ io.on('connection', (socket) => {
         pieceEmoji: playerData.pieceEmoji,
         coins: authenticatedPlayer.coins,
         isAuthenticated: true,
-        // **Voice Chat - THÊM MỚI**
-        voiceState: {
-          isMuted: false,
-          isDeafened: false,
-          isConnected: false
-        }
+        isVoiceConnected: false // NEW: Initialize voice connection status
       };
       
       gameState.players.push(player);
@@ -867,8 +790,7 @@ io.on('connection', (socket) => {
         isAIGame: false,
         createdAt: Date.now(),
         lastActivity: Date.now(),
-        // **Voice Chat - THÊM MỚI**
-        voiceParticipants: new Map()
+        voiceConnectedUsers: new Set() // NEW: Initialize voice connected users
       };
       
       rooms.set(roomId, room);
@@ -935,12 +857,7 @@ io.on('connection', (socket) => {
         pieceEmoji: playerData.pieceEmoji,
         coins: authenticatedPlayer.coins,
         isAuthenticated: true,
-        // **Voice Chat - THÊM MỚI**
-        voiceState: {
-          isMuted: false,
-          isDeafened: false,
-          isConnected: false
-        }
+        isVoiceConnected: false // NEW: Initialize voice connection status
       };
       
       room.gameState.players.push(player);
@@ -983,12 +900,7 @@ io.on('connection', (socket) => {
         pieceEmoji: data.playerData.pieceEmoji,
         coins: authenticatedPlayer.coins,
         isAuthenticated: true,
-        // **Voice Chat - THÊM MỚI**
-        voiceState: {
-          isMuted: false,
-          isDeafened: false,
-          isConnected: false
-        }
+        isVoiceConnected: false // NEW: Initialize voice connection status
       };
       
       const aiPlayer: Player = {
@@ -1000,7 +912,8 @@ io.on('connection', (socket) => {
         color: 'white',
         pieceEmoji: data.playerData.pieceEmoji,
         coins: 0,
-        isAuthenticated: false
+        isAuthenticated: false,
+        isVoiceConnected: false // NEW: AI doesn't support voice
       };
       
       gameState.players = [humanPlayer, aiPlayer];
@@ -1014,8 +927,7 @@ io.on('connection', (socket) => {
         aiDifficulty: data.difficulty,
         createdAt: Date.now(),
         lastActivity: Date.now(),
-        // **Voice Chat - THÊM MỚI** (AI game không cần voice chat)
-        voiceParticipants: new Map()
+        voiceConnectedUsers: new Set() // NEW: Initialize voice connected users
       };
       
       rooms.set(roomId, room);
@@ -1030,98 +942,6 @@ io.on('connection', (socket) => {
       console.error('💥 Create AI game error:', error);
       socket.emit('error', 'Không thể tạo game với AI. Vui lòng thử lại.');
     }
-  });
-
-  // **Voice Chat Events - THÊM MỚI**
-  socket.on('voiceSignal', (data: VoiceSignalData) => {
-    console.log('🎙️ Voice signal received:', data.type, 'from:', data.from, 'to:', data.to);
-    
-    try {
-      // Find the room where this player is
-      let targetRoomId: string | null = null;
-      for (const [roomId, room] of rooms.entries()) {
-        if (room.gameState.players.some(p => p.id === socket.id)) {
-          targetRoomId = roomId;
-          break;
-        }
-      }
-
-      if (!targetRoomId) {
-        console.log('❌ Voice signal failed: Player not in any room');
-        return;
-      }
-
-      updateRoomActivity(targetRoomId);
-
-      // Handle voice state changes
-      if (data.type === 'voice-state-change') {
-        updateVoiceParticipant(targetRoomId, data.from, {
-          isMuted: data.muted || false,
-          isDeafened: data.deafened || false
-        });
-      }
-
-      // Forward signal to target player or all players in room
-      if (data.to === 'all') {
-        socket.to(targetRoomId).emit('voiceSignal', data);
-      } else {
-        // Find target socket
-        const room = rooms.get(targetRoomId);
-        if (room) {
-          const targetPlayer = room.gameState.players.find(p => p.id === data.to);
-          if (targetPlayer) {
-            socket.to(data.to).emit('voiceSignal', data);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('❌ Voice signal handling error:', error);
-    }
-  });
-
-  socket.on('joinVoiceChat', (roomId: string) => {
-    console.log('🎙️ Player joining voice chat:', socket.id, 'in room:', roomId);
-    
-    const room = rooms.get(roomId);
-    if (!room) {
-      socket.emit('error', 'Phòng không tồn tại');
-      return;
-    }
-
-    const player = room.gameState.players.find(p => p.id === socket.id);
-    if (!player) {
-      socket.emit('error', 'Bạn không ở trong phòng này');
-      return;
-    }
-
-    // Add to voice participants
-    addVoiceParticipant(roomId, socket.id, player.displayName);
-    
-    // Update player voice state
-    if (player.voiceState) {
-      player.voiceState.isConnected = true;
-    }
-
-    updateRoomActivity(roomId);
-    io.to(roomId).emit('gameStateUpdate', room.gameState);
-  });
-
-  socket.on('leaveVoiceChat', (roomId: string) => {
-    console.log('🔇 Player leaving voice chat:', socket.id, 'from room:', roomId);
-    
-    const room = rooms.get(roomId);
-    if (!room) return;
-
-    const player = room.gameState.players.find(p => p.id === socket.id);
-    if (player && player.voiceState) {
-      player.voiceState.isConnected = false;
-      player.voiceState.isMuted = false;
-      player.voiceState.isDeafened = false;
-    }
-
-    removeVoiceParticipant(roomId, socket.id);
-    updateRoomActivity(roomId);
-    io.to(roomId).emit('gameStateUpdate', room.gameState);
   });
 
   socket.on('playerReady', (roomId: string) => {
@@ -1257,7 +1077,7 @@ io.on('connection', (socket) => {
         // Refresh coins from database
         const playerData = database.getPlayer(p.displayName);
         if (playerData) {
-          return { ...p, coins: playerData.coins };
+          return { ...p, coins: playerData.coins, isVoiceConnected: p.isVoiceConnected }; // NEW: Preserve voice connection status
         }
       }
       return { ...p };
@@ -1278,7 +1098,8 @@ io.on('connection', (socket) => {
         color: 'white',
         pieceEmoji: humanPlayerData?.pieceEmoji,
         coins: 0,
-        isAuthenticated: false
+        isAuthenticated: false,
+        isVoiceConnected: false // NEW: AI doesn't support voice
       };
       
       if (humanPlayerData) {
@@ -1299,9 +1120,7 @@ io.on('connection', (socket) => {
       room.gameState.players = oldPlayers.map((p, index) => ({ 
         ...p, 
         isReady: false,
-        color: index === 0 ? 'black' : 'white',
-        // Reset voice state for new game
-        voiceState: p.voiceState ? { ...p.voiceState, isConnected: false } : undefined
+        color: index === 0 ? 'black' : 'white'
       }));
       
       room.isAIGame = false;
@@ -1310,12 +1129,6 @@ io.on('connection', (socket) => {
     
     // Clear coin transactions for new game
     room.gameState.coinTransactions = undefined;
-    
-    // Reset voice participants for new game
-    room.voiceParticipants.clear();
-    if (room.gameState.voiceChat) {
-      room.gameState.voiceChat.participants = [];
-    }
     
     io.to(roomId).emit('gameStateUpdate', room.gameState);
   });
@@ -1352,6 +1165,152 @@ io.on('connection', (socket) => {
     io.to(data.roomId).emit('newMessage', chatMessage);
   });
 
+  // ========== NEW: Voice Chat Event Handlers ==========
+  
+  // Join voice chat room
+  socket.on('voiceJoinRoom', ({ roomId }: { roomId: string }) => {
+    const room = rooms.get(roomId);
+    if (!room) {
+      socket.emit('error', 'Phòng không tồn tại');
+      return;
+    }
+    
+    // Check if user is in the game room
+    const player = room.gameState.players.find(p => p.id === socket.id);
+    if (!player) {
+      socket.emit('error', 'Bạn không ở trong phòng này');
+      return;
+    }
+    
+    // Don't allow voice chat for AI games
+    if (room.isAIGame) {
+      socket.emit('error', 'Voice chat không khả dụng cho game với AI');
+      return;
+    }
+    
+    // Add user to voice connected users
+    if (!room.voiceConnectedUsers) {
+      room.voiceConnectedUsers = new Set();
+    }
+    room.voiceConnectedUsers.add(socket.id);
+    
+    // Update player voice status
+    player.isVoiceConnected = true;
+    
+    updateRoomActivity(roomId);
+    
+    // Notify other users in the room that someone joined voice chat
+    socket.to(roomId).emit('voiceUserJoined', { peerId: socket.id });
+    
+    // Send current voice connected users to the new joiner
+    const otherVoiceUsers = Array.from(room.voiceConnectedUsers).filter(id => id !== socket.id);
+    otherVoiceUsers.forEach(peerId => {
+      socket.emit('voiceUserJoined', { peerId });
+    });
+    
+    // Update game state to reflect voice connection status
+    io.to(roomId).emit('gameStateUpdate', room.gameState);
+    
+    console.log(`🎤 User ${socket.id} joined voice chat in room ${roomId}`);
+  });
+  
+  // Leave voice chat room
+  socket.on('voiceLeaveRoom', ({ roomId }: { roomId: string }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    
+    // Remove user from voice connected users
+    if (room.voiceConnectedUsers) {
+      room.voiceConnectedUsers.delete(socket.id);
+    }
+    
+    // Update player voice status
+    const player = room.gameState.players.find(p => p.id === socket.id);
+    if (player) {
+      player.isVoiceConnected = false;
+    }
+    
+    updateRoomActivity(roomId);
+    
+    // Notify other users that someone left voice chat
+    socket.to(roomId).emit('voiceUserLeft', { peerId: socket.id });
+    
+    // Update game state to reflect voice connection status
+    io.to(roomId).emit('gameStateUpdate', room.gameState);
+    
+    console.log(`🔇 User ${socket.id} left voice chat in room ${roomId}`);
+  });
+  
+  // Handle WebRTC offer
+  socket.on('voiceOffer', ({ roomId, offer, targetPeerId }: VoiceOffer) => {
+    const room = rooms.get(roomId);
+    if (!room || !room.voiceConnectedUsers?.has(socket.id)) {
+      socket.emit('error', 'Bạn không ở trong voice chat của phòng này');
+      return;
+    }
+    
+    updateRoomActivity(roomId);
+    
+    // Forward offer to target peer
+    socket.to(targetPeerId).emit('voiceOffer', {
+      offer,
+      fromPeerId: socket.id
+    });
+    
+    console.log(`📞 Voice offer from ${socket.id} to ${targetPeerId} in room ${roomId}`);
+  });
+  
+  // Handle WebRTC answer
+  socket.on('voiceAnswer', ({ roomId, answer, targetPeerId }: VoiceAnswer) => {
+    const room = rooms.get(roomId);
+    if (!room || !room.voiceConnectedUsers?.has(socket.id)) {
+      socket.emit('error', 'Bạn không ở trong voice chat của phòng này');
+      return;
+    }
+    
+    updateRoomActivity(roomId);
+    
+    // Forward answer to target peer
+    socket.to(targetPeerId).emit('voiceAnswer', {
+      answer,
+      fromPeerId: socket.id
+    });
+    
+    console.log(`✅ Voice answer from ${socket.id} to ${targetPeerId} in room ${roomId}`);
+  });
+  
+  // Handle ICE candidates
+  socket.on('voiceIceCandidate', ({ roomId, candidate, targetPeerId }: VoiceIceCandidate) => {
+    const room = rooms.get(roomId);
+    if (!room || !room.voiceConnectedUsers?.has(socket.id)) {
+      return; // Silently ignore if not in voice chat
+    }
+    
+    updateRoomActivity(roomId);
+    
+    // Forward ICE candidate to target peer
+    socket.to(targetPeerId).emit('voiceIceCandidate', {
+      candidate,
+      fromPeerId: socket.id
+    });
+  });
+  
+  // Handle speaking status updates
+  socket.on('userSpeaking', ({ roomId, speaking }: UserSpeaking) => {
+    const room = rooms.get(roomId);
+    if (!room || !room.voiceConnectedUsers?.has(socket.id)) {
+      return; // Silently ignore if not in voice chat
+    }
+    
+    updateRoomActivity(roomId);
+    
+    // Broadcast speaking status to all users in the room
+    socket.to(roomId).emit('userSpeaking', {
+      userId: socket.id,
+      speaking
+    });
+  });
+
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
     
@@ -1366,6 +1325,15 @@ io.on('connection', (socket) => {
       const playerIndex = room.gameState.players.findIndex(p => p.id === socket.id);
       if (playerIndex !== -1) {
         console.log(`🚪 Player left room: ${roomId}`);
+        
+        // NEW: Handle voice chat cleanup on disconnect
+        if (room.voiceConnectedUsers && room.voiceConnectedUsers.has(socket.id)) {
+          room.voiceConnectedUsers.delete(socket.id);
+          // Notify other voice users that this user disconnected
+          socket.to(roomId).emit('voiceUserLeft', { peerId: socket.id });
+          console.log(`🔇 User ${socket.id} disconnected from voice chat in room ${roomId}`);
+        }
+        
         room.gameState.players.splice(playerIndex, 1);
         updateRoomActivity(roomId);
         
@@ -1417,7 +1385,10 @@ app.get('/health', (req: Request, res: Response) => {
     timestamp: new Date().toISOString(),
     playersCount: database.getPlayerCount(),
     activeRooms: rooms.size,
-    activeConnections: authenticatedPlayers.size
+    activeConnections: authenticatedPlayers.size,
+    voiceConnections: Array.from(rooms.values()).reduce((total, room) => 
+      total + (room.voiceConnectedUsers?.size || 0), 0
+    )
   });
 });
 
@@ -1478,6 +1449,7 @@ app.get('/api/room/:roomId', (req: Request, res: Response) => {
           playersCount: room.gameState.players.length,
           gameStatus: room.gameState.gameStatus,
           isAIGame: room.isAIGame || false,
+          voiceConnectedUsers: room.voiceConnectedUsers?.size || 0, // NEW: Include voice connection count
           createdAt: new Date(room.createdAt).toISOString(),
           lastActivity: new Date(room.lastActivity).toISOString()
         }
@@ -1501,7 +1473,7 @@ const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Database loaded with ${database.getPlayerCount()} players`);
-  console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 CORS enabled for: ${process.env.NODE_ENV === 'production' ? 'https://huong-othello.vercel.app' : 'http://localhost:3000'}`);
+  console.log(`🎤 Voice chat support enabled`);
 });
-
