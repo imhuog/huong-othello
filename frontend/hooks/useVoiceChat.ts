@@ -256,7 +256,7 @@ export const useVoiceChat = (options: UseVoiceChatOptions): UseVoiceChatReturn =
 
   // Handle WebRTC signaling
   const handleVoiceSignal = useCallback(async (data: VoiceSignalData) => {
-    if (!options.playerId || data.to !== options.playerId) return;
+    if (!options.playerId || data.to !== options.playerId || !data.from) return;
 
     console.log('🎙️ Handling voice signal:', data.type, 'from:', data.from);
 
