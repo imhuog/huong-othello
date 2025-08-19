@@ -1,11 +1,29 @@
 // types.ts - Cập nhật định nghĩa theme và player options với Voice Chat
+export interface VoiceParticipant {
+  userId: string;
+  username?: string;
+  isConnected: boolean;
+  isMuted?: boolean;
+  isSpeaking?: boolean;
+  audioLevel?: number;
+  joinedAt: Date;
+}
+
 export interface VoiceSignalData {
-  // Định nghĩa các thuộc tính cần thiết
   userId: string;
   audioData?: ArrayBuffer | Blob;
   isRecording?: boolean;
   timestamp?: number;
-  // ... các thuộc tính khác tùy theo nhu cầu
+  type?: 'audio' | 'mute' | 'unmute' | 'join' | 'leave';
+}
+
+export interface VoiceChatState {
+  isConnected: boolean;
+  participants: VoiceParticipant[];
+  currentUser?: VoiceParticipant;
+  isRecording: boolean;
+  isMuted: boolean;
+  error?: string;
 }
 
 export interface ThemeColors {
