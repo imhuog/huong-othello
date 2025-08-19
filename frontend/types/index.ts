@@ -10,11 +10,15 @@ export interface VoiceParticipant {
 }
 
 export interface VoiceSignalData {
-  userId: string;
+  userId?: string;
+  from?: string;
+  to?: string;
   audioData?: ArrayBuffer | Blob;
   isRecording?: boolean;
   timestamp?: number;
-  type?: 'audio' | 'mute' | 'unmute' | 'join' | 'leave';
+  type?: 'audio' | 'mute' | 'unmute' | 'join' | 'leave' | 'offer' | 'answer' | 'ice-candidate' | 'voice-state-change';
+  data?: any;
+  muted?: boolean;
 }
 
 // ĐÃ XÓA INTERFACE TRÙNG LẶP - CHỈ GIỮ LẠI 1 VoiceChatState DUY NHẤT
