@@ -81,9 +81,9 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ roomId }) => {
           
           const isSpeaking = volume > 10; // Threshold for speaking detection
           if (isSpeaking) {
-            socket?.emit('userSpeaking', { roomId, speaking: true });
+          (socket as any)?.emit('userSpeaking', { roomId, speaking: true });
           } else {
-            socket?.emit('userSpeaking', { roomId, speaking: false });
+          (socket as any)?.emit('userSpeaking', { roomId, speaking: false });
           }
         }
         
