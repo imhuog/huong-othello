@@ -134,7 +134,7 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ roomId }) => {
     // Handle ICE candidates
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-        socket?.emit('voiceIceCandidate', {
+        (socket as any)?.emit('voiceIceCandidate', {
           roomId,
           candidate: event.candidate,
           targetPeerId: peerId
@@ -186,7 +186,7 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ roomId }) => {
       setupAudioAnalysis(stream);
       
       setIsMicOn(true);
-      socket?.emit('voiceJoinRoom', { roomId });
+      (socket as any)?.emit('voiceJoinRoom', { roomId });
       
     } catch (error) {
       console.error('Failed to start voice chat:', error);
@@ -222,7 +222,7 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ roomId }) => {
 
     setIsMicOn(false);
     setConnectedPeers(new Set());
-    socket?.emit('voiceLeaveRoom', { roomId });
+    (socket as any)?.emit('voiceLeaveRoom', { roomId });
   };
 
   // Toggle microphone
@@ -238,7 +238,7 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ roomId }) => {
       setIsMicOn(audioTrack.enabled);
       
       if (!audioTrack.enabled) {
-        socket?.emit('userSpeaking', { roomId, speaking: false });
+        (socket as any)?.emit('userSpeaking', { roomId, speaking: false });
       }
     }
   };
