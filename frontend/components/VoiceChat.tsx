@@ -3,6 +3,13 @@ import { Mic, MicOff, Volume2, VolumeX, Settings } from 'lucide-react';
 import { useSocket } from '../contexts/SocketContext';
 import { useGame } from '../contexts/GameContext';
 
+declare global {
+  interface Window {
+    webkitRTCPeerConnection?: typeof RTCPeerConnection;
+    mozRTCPeerConnection?: typeof RTCPeerConnection;
+  }
+}
+
 interface VoiceChatProps {
   roomId: string;
 }
