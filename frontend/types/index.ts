@@ -1,4 +1,12 @@
 // types.ts - Cập nhật định nghĩa theme và player options với Voice Chat
+export interface VoiceSignalData {
+  // Định nghĩa các thuộc tính cần thiết
+  userId: string;
+  audioData?: ArrayBuffer | Blob;
+  isRecording?: boolean;
+  timestamp?: number;
+  // ... các thuộc tính khác tùy theo nhu cầu
+}
 
 export interface ThemeColors {
   name: string;
