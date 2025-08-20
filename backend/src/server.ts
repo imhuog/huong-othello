@@ -112,7 +112,7 @@ const rooms = new Map<string, Room>();
 const roomTimers = new Map<string, NodeJS.Timeout>();
 const authenticatedPlayers = new Map<string, PlayerModel>(); // socketId -> PlayerModel
 
-/ NEW: Store voice chat participants per room
+// NEW: Store voice chat participants per room
 const voiceRooms = new Map<string, Set<string>>(); // roomId -> Set of socketIds
 
 // Room cleanup - Remove inactive rooms every 30 minutes
@@ -240,7 +240,7 @@ function awardCoinsToPlayers(room: Room): void {
   room.gameState.coinTransactions = coinTransactions;
 }
 
-/ NEW: Helper functions for voice chat
+// NEW: Helper functions for voice chat
 function getPlayerRoom(socketId: string): string | null {
   for (const [roomId, room] of rooms.entries()) {
     if (room.gameState.players.some(p => p.id === socketId)) {
@@ -1318,7 +1318,6 @@ const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Database loaded with ${database.getPlayerCount()} players`);
-  console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 CORS enabled for: ${process.env.NODE_ENV === 'production' ? 'https://huong-othello.vercel.app' : 'http://localhost:3000'}`);
 });
-
