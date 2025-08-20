@@ -6,7 +6,6 @@ import toast from 'react-hot-toast';
 interface GameContextType {
   gameState: GameState | null;
   roomId: string | null;
-  currentRoomId: string | null; // Alias for roomId for backward compatibility
   messages: ChatMessage[];
   currentTheme: ThemeColors;
   isAIGame: boolean;
@@ -165,12 +164,12 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
     socket.emit('createRoom', playerData);
   };
 
-  const joinRoom = (roomIdParam: string, playerData: { name: string; emoji: string; pieceEmoji?: { black: string; white: string } }) => {
+  const joinRoom = (roomId: string, playerData: { name: string; emoji: string; pieceEmoji?: { black: string; white: string } }) => {
     if (!socket || !currentPlayer) {
       toast.error('Bạn cần đăng nhập trước!');
       return;
     }
-    socket.emit('joinRoom', { roomId: roomIdParam, playerData });
+    socket.emit('joinRoom', { roomId, playerData });
   };
 
   const createAIGame = (playerData: { name: string; emoji: string; pieceEmoji?: { black: string; white: string } }, difficulty: AIDifficulty) => {
@@ -229,7 +228,6 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
       value={{
         gameState,
         roomId,
-        currentRoomId: roomId, // Provide currentRoomId as alias for roomId
         messages,
         currentTheme,
         isAIGame,
