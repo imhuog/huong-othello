@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import toast from 'react-hot-toast';
-import { LoginRequest, LoginResponse, PlayerModel, VoiceSignalData } from '../types';
+import { LoginRequest, LoginResponse, PlayerModel } from '../types';
 
 interface SocketContextType {
   socket: Socket | null;
@@ -13,10 +13,6 @@ interface SocketContextType {
   loginPlayer: (loginData: LoginRequest) => void;
   logoutPlayer: () => void;
   isLoggingIn: boolean;
-  // **Voice Chat - THÊM MỚI**
-  sendVoiceSignal: (data: VoiceSignalData) => void;
-  onVoiceSignal: (callback: (data: VoiceSignalData) => void) => void;
-  offVoiceSignal: () => void;
 }
 
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
@@ -40,15 +36,12 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
   const [currentPlayer, setCurrentPlayer] = useState<PlayerModel | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-  
-  // **Voice Chat - THÊM MỚI**
-  const [voiceCallbacks, setVoiceCallbacks] = useState<((data: VoiceSignalData) => void)[]>([]);
 
   // Initialize socket connection
   useEffect(() => {
     console.log('🔌 Initializing socket connection...');
     
-    // Kết nối đến server Render cho production, localhost cho development
+   // Kết nối đến server Render cho production, localhost cho development
     const serverUrl = process.env.NODE_ENV === 'production' 
       ? 'https://huong-othello.onrender.com'
       : 'http://localhost:3001';
@@ -181,23 +174,12 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
         });
       });
 
-      // **Voice Chat Events - THÊM MỚI**
-      socketInstance.on('voiceSignal', (data: VoiceSignalData) => {
-        console.log('🎙️ Voice signal received:', data);
-        voiceCallbacks.forEach(callback => callback(data));
-      });
-
-      socketInstance.on('voiceStateChanged', (data: { playerId: string; voiceState: any }) => {
-        console.log('🔊 Voice state changed:', data);
-        // Handle voice state changes if needed
-      });
-
       // Auto-login với delay nhỏ hơn
       const savedPlayerData = localStorage.getItem('othello_player');
       if (savedPlayerData) {
         try {
           const player = JSON.parse(savedPlayerData) as PlayerModel;
-          console.log('📄 Auto-login with saved data:', player.displayName);
+          console.log('🔄 Auto-login with saved data:', player.displayName);
           
           // Giảm delay xuống và kiểm tra socket instance
           const autoLoginTimeout = setTimeout(() => {
@@ -321,25 +303,6 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     });
   };
 
-  // **Voice Chat Functions - THÊM MỚI**
-  const sendVoiceSignal = (data: VoiceSignalData) => {
-    if (!socket || !isConnected) {
-      console.error('❌ Cannot send voice signal: Socket not connected');
-      return;
-    }
-    
-    console.log('🎙️ Sending voice signal:', data);
-    socket.emit('voiceSignal', data);
-  };
-
-  const onVoiceSignal = (callback: (data: VoiceSignalData) => void) => {
-    setVoiceCallbacks(prev => [...prev, callback]);
-  };
-
-  const offVoiceSignal = () => {
-    setVoiceCallbacks([]);
-  };
-
   const contextValue: SocketContextType = {
     socket,
     isConnected,
@@ -348,11 +311,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     isAuthenticated,
     loginPlayer,
     logoutPlayer,
-    isLoggingIn,
-    // **Voice Chat - THÊM MỚI**
-    sendVoiceSignal,
-    onVoiceSignal,
-    offVoiceSignal
+    isLoggingIn
   };
 
   return (
@@ -360,4 +319,5 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
       {children}
     </SocketContext.Provider>
   );
+
 };
