@@ -8,6 +8,13 @@ export interface ThemeColors {
   background: string; // Background cho container bàn cờ
 }
 
+// Thêm interface cho sự kiện đầu hàng
+export interface SurrenderEvent {
+  playerId: string;
+  playerName: string;
+  timestamp: number;
+}
+
 export const BOARD_THEMES: ThemeColors[] = [
   {
     name: 'Cổ điển',
@@ -145,18 +152,20 @@ export interface CoinsAwarded {
   result: 'win' | 'lose' | 'draw';
 }
 
-// Player và Game state interfaces - Updated
+// Cập nhật GameState interface nếu chưa có
 export interface GameState {
   board: (number | null)[][];
+  currentPlayer: 1 | 2;
   players: Player[];
-  currentPlayer: number;
   gameStatus: 'waiting' | 'playing' | 'finished';
-  scores: { [key: number]: number };
-  validMoves: [number, number][];
+  scores: { 1: number; 2: number };
+  validMoves: number[][];
   timeLeft: number;
   winnerId?: string;
-  coinTransactions?: CoinTransaction[]; // Thêm thông tin giao dịch xu
-  coinsAwarded?: CoinsAwarded; // Thêm thuộc tính này để fix lỗi
+  lastMove?: { row: number; col: number; playerId: string };
+  coinTransactions?: CoinTransaction[];
+  coinsAwarded?: { playerId: string; amount: number; result: 'win' | 'lose' | 'draw' | 'surrender' };
+  surrenderedPlayerId?: string; // ID của người đầu hàng
 }
 
 export interface Player {
@@ -190,7 +199,7 @@ export interface CoinTransaction {
   oldCoins: number;
   newCoins: number;
   coinChange: number;
-  result: 'win' | 'lose' | 'draw';
+  result: 'win' | 'lose' | 'draw' | 'surrender'; // Thêm 'surrender'
 }
 
 export interface ChatMessage {
@@ -211,6 +220,34 @@ export interface LoginRequest {
     black: string;
     white: string;
   };
+}
+/ Thêm interface cho socket events
+export interface SocketEvents {
+  // Existing events
+  loginPlayer: (data: any) => void;
+  createRoom: (data: any) => void;
+  joinRoom: (data: any) => void;
+  playerReady: (roomId: string) => void;
+  makeMove: (data: any) => void;
+  newGame: (data: any) => void;
+  sendMessage: (data: any) => void;
+  
+  // New surrender event
+  surrender: (roomId: string) => void;
+}
+
+export interface SocketResponseEvents {
+  // Existing events
+  loginResponse: (data: any) => void;
+  roomCreated: (data: any) => void;
+  roomJoined: (data: any) => void;
+  gameStateUpdate: (gameState: GameState) => void;
+  timerUpdate: (timeLeft: number) => void;
+  newMessage: (message: any) => void;
+  error: (message: string) => void;
+  
+  // New surrender events
+  playerSurrendered: (data: SurrenderEvent) => void;
 }
 
 export interface LoginResponse {
