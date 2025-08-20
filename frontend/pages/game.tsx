@@ -4,6 +4,7 @@ import { useGame } from '../contexts/GameContext';
 import Board from '../components/Board';
 import GameInfo from '../components/GameInfo';
 import Chat from '../components/Chat';
+import VoiceControls from '../components/VoiceControls'; // NEW: Import VoiceControls
 
 const GamePage: React.FC = () => {
   const { gameState, currentTheme } = useGame();
@@ -74,6 +75,9 @@ const GamePage: React.FC = () => {
 
       {/* Chat Component - Fixed position */}
       <Chat />
+      
+      {/* NEW: Voice Controls - Fixed position */}
+      <VoiceControls />
     </div>
   );
 };
