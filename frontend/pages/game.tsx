@@ -1,17 +1,13 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { useGame } from '../contexts/GameContext';
-import { useSocket } from '../contexts/SocketContext';
 import Board from '../components/Board';
 import GameInfo from '../components/GameInfo';
 import Chat from '../components/Chat';
-import VoiceChat from '../components/VoiceChat';
 
 const GamePage: React.FC = () => {
-  const { gameState, currentTheme, currentRoomId, isAIGame } = useGame();
-  const { isConnected, currentPlayer } = useSocket();
+  const { gameState, currentTheme } = useGame();
 
-  // Loading state
   if (!gameState) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center">
@@ -22,28 +18,6 @@ const GamePage: React.FC = () => {
         >
           <div className="text-6xl mb-4">⚫⚪</div>
           <div className="text-xl">Đang tải game...</div>
-          <div className="mt-4 text-sm opacity-70">
-            {!isConnected && "Đang kết nối đến server..."}
-            {isConnected && !currentPlayer && "Đang xác thực người chơi..."}
-            {isConnected && currentPlayer && !gameState && "Đang tải trạng thái game..."}
-          </div>
-        </motion.div>
-      </div>
-    );
-  }
-
-  // Connection error state
-  if (!isConnected) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-red-900 via-red-800 to-red-900 flex items-center justify-center">
-        <motion.div
-          className="text-center text-white"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-        >
-          <div className="text-6xl mb-4">⚠️</div>
-          <div className="text-xl">Mất kết nối</div>
-          <div className="mt-2 text-sm opacity-70">Đang thử kết nối lại...</div>
         </motion.div>
       </div>
     );
@@ -98,20 +72,8 @@ const GamePage: React.FC = () => {
         </div>
       </div>
 
-      {/* Chat Component - Fixed position - Only show for human vs human games */}
-      {currentRoomId && !isAIGame && <Chat />}
-
-      {/* Voice Chat Component - Only show if room exists and it's not an AI game */}
-      {currentRoomId && !isAIGame && gameState && (
-        <VoiceChat roomId={currentRoomId} />
-      )}
-
-      {/* Room ID Display for debugging (can be removed in production) */}
-      {process.env.NODE_ENV === 'development' && currentRoomId && (
-        <div className="fixed bottom-4 left-4 bg-black/50 text-white text-xs p-2 rounded">
-          Room: {currentRoomId} | AI: {isAIGame ? 'Yes' : 'No'}
-        </div>
-      )}
+      {/* Chat Component - Fixed position */}
+      <Chat />
     </div>
   );
 };
