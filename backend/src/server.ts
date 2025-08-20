@@ -13,7 +13,6 @@ import { PlayerModel, LoginRequest, LoginResponse, getCoinChangeForResult, getRe
 const app = express();
 const server = createServer(app);
 
-
 // Middleware
 app.use(helmet());
 app.use(compression());
@@ -60,8 +59,9 @@ interface GameState {
   timeLeft: number;
   winnerId?: string;
   lastMove?: { row: number; col: number; playerId: string };
+  surrenderedPlayerId?: string; // Added this property
   coinTransactions?: { playerId: string; nickname: string; oldCoins: number; newCoins: number; coinChange: number; result: string }[];
-  coinsAwarded?: { playerId: string; amount: number; result: 'win' | 'lose' | 'draw' };
+  coinsAwarded?: { playerId: string; amount: number; result: 'win' | 'lose' | 'draw' | 'surrender' };
 }
 
 interface Room {
@@ -101,6 +101,7 @@ interface VoiceIceCandidate {
   to: string;
   candidate: any; // WebRTC ICE candidate object
 }
+
 enum AIDifficulty {  
   EASY = 'easy',
   MEDIUM = 'medium',
@@ -164,14 +165,14 @@ function awardCoinsToPlayers(room: Room): void {
   let player1Result: 'win' | 'lose' | 'draw';
   let player2Result: 'win' | 'lose' | 'draw';
   
- // Kiểm tra đầu hàng trước
+  // Kiểm tra đầu hàng trước
   if (room.gameState.surrenderedPlayerId) {
     if (room.gameState.surrenderedPlayerId === player1?.id) {
-      player1Result = 'surrender';
+      player1Result = 'lose'; // Player who surrendered loses
       player2Result = 'win';
     } else if (room.gameState.surrenderedPlayerId === player2?.id) {
       player1Result = 'win';
-      player2Result = 'surrender';
+      player2Result = 'lose'; // Player who surrendered loses
     } else {
       // Fallback to normal scoring
       if (scores[1] > scores[2]) {
@@ -1004,6 +1005,42 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Add surrender handler
+  socket.on('surrender', (roomId: string) => {
+    const room = rooms.get(roomId);
+    if (!room || room.gameState.gameStatus !== 'playing') {
+      socket.emit('error', 'Game không khả dụng');
+      return;
+    }
+    
+    const player = room.gameState.players.find(p => p.id === socket.id);
+    if (!player) {
+      socket.emit('error', 'Bạn không ở trong phòng này');
+      return;
+    }
+    
+    // Set surrender flag
+    room.gameState.surrenderedPlayerId = socket.id;
+    room.gameState.gameStatus = 'finished';
+    
+    // Clear timer
+    if (roomTimers.has(roomId)) {
+      clearInterval(roomTimers.get(roomId)!);
+      roomTimers.delete(roomId);
+    }
+    
+    // Determine winner (the other player)
+    const otherPlayer = room.gameState.players.find(p => p.id !== socket.id);
+    if (otherPlayer) {
+      room.gameState.winnerId = otherPlayer.id;
+    }
+    
+    updateRoomActivity(roomId);
+    awardCoinsToPlayers(room);
+    
+    io.to(roomId).emit('gameStateUpdate', room.gameState);
+  });
+
   socket.on('makeMove', (data: { roomId: string; row: number; col: number; difficulty?: AIDifficulty }) => {
     const room = rooms.get(data.roomId);
     if (!room || room.gameState.gameStatus !== 'playing') {
@@ -1154,8 +1191,9 @@ io.on('connection', (socket) => {
       room.aiDifficulty = undefined;
     }
     
-    // Clear coin transactions for new game
+    // Clear coin transactions and surrender flag for new game
     room.gameState.coinTransactions = undefined;
+    room.gameState.surrenderedPlayerId = undefined;
     
     io.to(roomId).emit('gameStateUpdate', room.gameState);
   });
@@ -1344,4 +1382,3 @@ server.listen(PORT, () => {
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 CORS enabled for: ${process.env.NODE_ENV === 'production' ? 'https://huong-othello.vercel.app' : 'http://localhost:3000'}`);
 });
-
