@@ -77,7 +77,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
       });
 
       socketInstance.on('disconnect', (reason) => {
-        console.log('❌ Socket disconnected:', reason);
+        console.log('⚠ Socket disconnected:', reason);
         setIsConnected(false);
         
         // Don't show toast for intentional disconnects
@@ -111,7 +111,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
       });
 
       socketInstance.on('reconnect_error', (error) => {
-        console.error('🔄❌ Reconnection failed:', error);
+        console.error('🔄⚠ Reconnection failed:', error);
         setConnectionError('Không thể kết nối lại');
       });
 
@@ -160,14 +160,14 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
         } else {
           toast.error(response.message || 'Đăng nhập thất bại!', {
             duration: 5000,
-            icon: '❌'
+            icon: '⚠'
           });
           setCurrentPlayer(null);
           setIsAuthenticated(false);
         }
       });
 
-      // NEW: Handle player data response for refresh
+      // NEW: Handle player data response for refresh - ĐÃ SỬA LỖI
       socketInstance.on('playerDataResponse', (response: { success: boolean; player?: PlayerModel; message?: string }) => {
         console.log('📊 Player data response received:', response);
         
@@ -177,12 +177,18 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
             ...currentPlayer!,
             coins: response.player.coins,
             stats: response.player.stats ? {
-              gamesPlayed: response.player.gamesPlayed,
-              gamesWon: response.player.gamesWon,
-              gamesLost: response.player.gamesLost,
-              gamesDraw: response.player.gamesDraw,
-              winRate: response.player.gamesPlayed > 0 ? Math.round((response.player.gamesWon / response.player.gamesPlayed) * 100) : 0
-            } : currentPlayer!.stats,
+              gamesPlayed: response.player.stats.gamesPlayed || 0,
+              gamesWon: response.player.stats.gamesWon || 0,
+              gamesLost: response.player.stats.gamesLost || 0,
+              gamesDraw: response.player.stats.gamesDraw || 0,
+              winRate: response.player.stats.gamesPlayed > 0 ? Math.round((response.player.stats.gamesWon / response.player.stats.gamesPlayed) * 100) : 0
+            } : {
+              gamesPlayed: 0,
+              gamesWon: 0,
+              gamesLost: 0,
+              gamesDraw: 0,
+              winRate: 0
+            },
             lastPlayed: response.player.lastPlayed,
           };
           
@@ -193,7 +199,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
           
           console.log('✅ Player data refreshed:', updatedPlayer.displayName, 'coins:', updatedPlayer.coins);
         } else {
-          console.error('❌ Failed to refresh player data:', response.message);
+          console.error('⚠ Failed to refresh player data:', response.message);
         }
       });
 
@@ -211,7 +217,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
       if (savedPlayerData) {
         try {
           const player = JSON.parse(savedPlayerData) as PlayerModel;
-          console.log('🔄 Auto-login with saved data:', player.displayName);
+          console.log('📄 Auto-login with saved data:', player.displayName);
           
           // Giảm delay xuống và kiểm tra socket instance
           const autoLoginTimeout = setTimeout(() => {
@@ -244,7 +250,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
             socketInstance.disconnect();
           };
         } catch (error) {
-          console.error('❌ Error loading saved player data:', error);
+          console.error('⚠ Error loading saved player data:', error);
           localStorage.removeItem('othello_player');
         }
       }
@@ -271,7 +277,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     console.log('📤 Login attempt:', loginData);
     
     if (!socket) {
-      console.error('❌ Socket not available');
+      console.error('⚠ Socket not available');
       toast.error('Socket chưa được khởi tạo!');
       return;
     }
@@ -288,7 +294,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     }
 
     if (!isConnected) {
-      console.error('❌ Socket not connected');
+      console.error('⚠ Socket not connected');
       toast.error('Chưa kết nối tới máy chủ! Đang thử kết nối lại...');
       
       // Try to reconnect
@@ -325,12 +331,12 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     console.log('🔄 Refreshing player data for:', nickname);
     
     if (!socket || !isConnected) {
-      console.error('❌ Socket not available or not connected');
+      console.error('⚠ Socket not available or not connected');
       return;
     }
 
     if (!nickname?.trim()) {
-      console.error('❌ No nickname provided for refresh');
+      console.error('⚠ No nickname provided for refresh');
       return;
     }
 
