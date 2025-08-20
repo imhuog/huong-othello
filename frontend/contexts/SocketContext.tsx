@@ -13,6 +13,8 @@ interface SocketContextType {
   loginPlayer: (loginData: LoginRequest) => void;
   logoutPlayer: () => void;
   isLoggingIn: boolean;
+  // NEW: Function to refresh player data from database
+  refreshPlayerData: (nickname: string) => void;
 }
 
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
@@ -131,7 +133,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
           setCurrentPlayer(response.player);
           setIsAuthenticated(true);
           
-          // Save to localStorage
+          // Save to localStorage with updated data
           localStorage.setItem('othello_player', JSON.stringify(response.player));
           
           // Show welcome message
@@ -162,6 +164,36 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
           });
           setCurrentPlayer(null);
           setIsAuthenticated(false);
+        }
+      });
+
+      // NEW: Handle player data response for refresh
+      socketInstance.on('playerDataResponse', (response: { success: boolean; player?: PlayerModel; message?: string }) => {
+        console.log('📊 Player data response received:', response);
+        
+        if (response.success && response.player) {
+          // Update current player with fresh data from database
+          const updatedPlayer: PlayerModel = {
+            ...currentPlayer!,
+            coins: response.player.coins,
+            stats: response.player.stats ? {
+              gamesPlayed: response.player.gamesPlayed,
+              gamesWon: response.player.gamesWon,
+              gamesLost: response.player.gamesLost,
+              gamesDraw: response.player.gamesDraw,
+              winRate: response.player.gamesPlayed > 0 ? Math.round((response.player.gamesWon / response.player.gamesPlayed) * 100) : 0
+            } : currentPlayer!.stats,
+            lastPlayed: response.player.lastPlayed,
+          };
+          
+          setCurrentPlayer(updatedPlayer);
+          
+          // Update localStorage with fresh data
+          localStorage.setItem('othello_player', JSON.stringify(updatedPlayer));
+          
+          console.log('✅ Player data refreshed:', updatedPlayer.displayName, 'coins:', updatedPlayer.coins);
+        } else {
+          console.error('❌ Failed to refresh player data:', response.message);
         }
       });
 
@@ -288,6 +320,24 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     socket.once('loginResponse', clearTimeoutOnResponse);
   };
 
+  // NEW: Function to refresh player data from database
+  const refreshPlayerData = (nickname: string) => {
+    console.log('🔄 Refreshing player data for:', nickname);
+    
+    if (!socket || !isConnected) {
+      console.error('❌ Socket not available or not connected');
+      return;
+    }
+
+    if (!nickname?.trim()) {
+      console.error('❌ No nickname provided for refresh');
+      return;
+    }
+
+    // Emit request to get fresh player data
+    socket.emit('getPlayerData', nickname.trim());
+  };
+
   const logoutPlayer = () => {
     console.log('🚪 Logging out player');
     setCurrentPlayer(null);
@@ -311,7 +361,8 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     isAuthenticated,
     loginPlayer,
     logoutPlayer,
-    isLoggingIn
+    isLoggingIn,
+    refreshPlayerData // NEW: Add to context
   };
 
   return (
