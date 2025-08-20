@@ -30,27 +30,27 @@ const GamePage: React.FC = () => {
       return currentTheme.background;
     }
     
-    // Map theme names to gradient backgrounds
+    // Map theme names to gradient backgrounds - giống màn home
     const themeBackgrounds: { [key: string]: string } = {
-      'Cổ điển': 'bg-gradient-to-br from-green-800 via-green-900 to-gray-900',
-      'Đại dương': 'bg-gradient-to-br from-blue-800 via-blue-900 to-indigo-900',
-      'Hoàng hôn': 'bg-gradient-to-br from-orange-800 via-red-800 to-purple-900',
-      'Rừng xanh': 'bg-gradient-to-br from-green-700 via-green-800 to-emerald-900',
-      'Hoàng gia': 'bg-gradient-to-br from-purple-800 via-purple-900 to-indigo-900',
-      'Hồng ngọt': 'bg-gradient-to-br from-pink-700 via-pink-800 to-rose-900',
-      'Bạc hà': 'bg-gradient-to-br from-teal-700 via-teal-800 to-cyan-900',
-      'Oải hương': 'bg-gradient-to-br from-purple-700 via-purple-800 to-violet-900',
-      'San hô': 'bg-gradient-to-br from-orange-700 via-red-700 to-pink-800',
-      'Bầu trời': 'bg-gradient-to-br from-sky-700 via-blue-800 to-indigo-900',
-      'Cầu vồng': 'bg-gradient-to-br from-red-500 via-yellow-500 via-green-500 via-blue-500 via-indigo-500 to-purple-500',
+      'Cổ điển': 'bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900',
+      'Đại dương': 'bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900',
+      'Hoàng hôn': 'bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900',
+      'Rừng xanh': 'bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900',
+      'Hoàng gia': 'bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900',
+      'Hồng ngọt': 'bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900',
+      'Bạc hà': 'bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900',
+      'Oải hương': 'bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900',
+      'San hô': 'bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900',
+      'Bầu trời': 'bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900',
+      'Cầu vồng': 'bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900',
       // Dark themes
-      'Đêm tối': 'bg-gradient-to-br from-gray-800 via-gray-900 to-black',
-      'Ma quái': 'bg-gradient-to-br from-slate-800 via-gray-900 to-black',
-      'Lava': 'bg-gradient-to-br from-red-900 via-red-950 to-black',
-      'Rừng đêm': 'bg-gradient-to-br from-green-900 via-gray-900 to-black',
-      'Biển sâu': 'bg-gradient-to-br from-blue-900 via-slate-900 to-black',
-      'Không gian': 'bg-gradient-to-br from-indigo-900 via-purple-900 to-black',
-      'Cầu vồng tối': 'bg-gradient-to-br from-purple-900 via-indigo-900 to-black',
+      'Đêm tối': 'bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900',
+      'Ma quái': 'bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900',
+      'Lava': 'bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900',
+      'Rừng đêm': 'bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900',
+      'Biển sâu': 'bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900',
+      'Không gian': 'bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900',
+      'Cầu vồng tối': 'bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900',
     };
     
     return themeBackgrounds[currentTheme.name] || 'bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900';
