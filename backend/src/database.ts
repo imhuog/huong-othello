@@ -94,7 +94,7 @@ class Database {
   }
 
   // Cập nhật xu cho player
-  updatePlayerCoins(nickname: string, coinChange: number, gameResult: 'win' | 'lose' | 'draw'): PlayerData {
+  updatePlayerCoins(nickname: string, coinChange: number, gameResult: 'win' | 'lose' | 'draw' | 'surrender'): PlayerData {
     const normalizedNickname = nickname.toLowerCase().trim();
     const player = this.getOrCreatePlayer(nickname);
     
@@ -108,6 +108,7 @@ class Database {
         player.gamesWon++;
         break;
       case 'lose':
+      case 'surrender': // Đầu hàng được tính là thua
         player.gamesLost++;
         break;
       case 'draw':
@@ -123,6 +124,19 @@ class Database {
     console.log(`Updated player ${nickname}: coins=${player.coins} (${coinChange >= 0 ? '+' : ''}${coinChange}), result=${gameResult}`);
     
     return player;
+  }
+
+  // Xử lý đầu hàng - trừ xu người đầu hàng, cộng xu đối thủ
+  handleSurrender(surrenderPlayerNickname: string, opponentNickname: string): { surrenderPlayer: PlayerData; opponentPlayer: PlayerData } {
+    const surrenderPlayer = this.updatePlayerCoins(surrenderPlayerNickname, -10, 'surrender');
+    const opponentPlayer = this.updatePlayerCoins(opponentNickname, 10, 'win');
+    
+    console.log(`Surrender handled: ${surrenderPlayerNickname} lost 10 coins, ${opponentNickname} gained 10 coins`);
+    
+    return {
+      surrenderPlayer,
+      opponentPlayer
+    };
   }
 
   // Lấy top players by coins
