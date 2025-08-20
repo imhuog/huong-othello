@@ -8,13 +8,6 @@ export interface ThemeColors {
   background: string; // Background cho container bàn cờ
 }
 
-// Thêm interface cho sự kiện đầu hàng
-export interface SurrenderEvent {
-  playerId: string;
-  playerName: string;
-  timestamp: number;
-}
-
 export const BOARD_THEMES: ThemeColors[] = [
   {
     name: 'Cổ điển',
@@ -149,23 +142,22 @@ export const BOARD_THEMES: ThemeColors[] = [
 export interface CoinsAwarded {
   playerId: string;
   amount: number;
-  result: 'win' | 'lose' | 'draw';
+  result: 'win' | 'lose' | 'draw' | 'surrender_win' | 'surrender_lose';
 }
 
-// Cập nhật GameState interface nếu chưa có
+// Player và Game state interfaces - Updated
 export interface GameState {
   board: (number | null)[][];
-  currentPlayer: 1 | 2;
   players: Player[];
-  gameStatus: 'waiting' | 'playing' | 'finished';
-  scores: { 1: number; 2: number };
-  validMoves: number[][];
+  currentPlayer: number;
+  gameStatus: 'waiting' | 'playing' | 'finished' | 'surrendered'; // Thêm trạng thái surrendered
+  scores: { [key: number]: number };
+  validMoves: [number, number][];
   timeLeft: number;
   winnerId?: string;
-  lastMove?: { row: number; col: number; playerId: string };
-  coinTransactions?: CoinTransaction[];
-  coinsAwarded?: { playerId: string; amount: number; result: 'win' | 'lose' | 'draw' | 'surrender' };
-  surrenderedPlayerId?: string; // ID của người đầu hàng
+  surrenderId?: string; // ID của người đầu hàng
+  coinTransactions?: CoinTransaction[]; // Thêm thông tin giao dịch xu
+  coinsAwarded?: CoinsAwarded; // Thêm thuộc tính này để fix lỗi
 }
 
 export interface Player {
@@ -177,6 +169,7 @@ export interface Player {
   isReady: boolean;
   coins: number; // Luôn có coins
   isAuthenticated: boolean; // Đã đăng nhập với nickname
+  hasSurrendered?: boolean; // Thêm thuộc tính để track đầu hàng
   // Thêm thuộc tính cho quân cờ tùy chỉnh
   pieceEmoji?: {
     black: string;
@@ -191,6 +184,7 @@ export interface PlayerStats {
   gamesLost: number;
   gamesDraw: number;
   winRate: number;
+  surrenders?: number; // Thêm thống kê số lần đầu hàng
 }
 
 export interface CoinTransaction {
@@ -199,7 +193,7 @@ export interface CoinTransaction {
   oldCoins: number;
   newCoins: number;
   coinChange: number;
-  result: 'win' | 'lose' | 'draw' | 'surrender'; // Thêm 'surrender'
+  result: 'win' | 'lose' | 'draw' | 'surrender_win' | 'surrender_lose';
 }
 
 export interface ChatMessage {
@@ -220,34 +214,6 @@ export interface LoginRequest {
     black: string;
     white: string;
   };
-}
-/ Thêm interface cho socket events
-export interface SocketEvents {
-  // Existing events
-  loginPlayer: (data: any) => void;
-  createRoom: (data: any) => void;
-  joinRoom: (data: any) => void;
-  playerReady: (roomId: string) => void;
-  makeMove: (data: any) => void;
-  newGame: (data: any) => void;
-  sendMessage: (data: any) => void;
-  
-  // New surrender event
-  surrender: (roomId: string) => void;
-}
-
-export interface SocketResponseEvents {
-  // Existing events
-  loginResponse: (data: any) => void;
-  roomCreated: (data: any) => void;
-  roomJoined: (data: any) => void;
-  gameStateUpdate: (gameState: GameState) => void;
-  timerUpdate: (timeLeft: number) => void;
-  newMessage: (message: any) => void;
-  error: (message: string) => void;
-  
-  // New surrender events
-  playerSurrendered: (data: SurrenderEvent) => void;
 }
 
 export interface LoginResponse {
@@ -273,7 +239,7 @@ export interface PlayerModel {
   isAuthenticated: boolean;
   lastPlayed?: string;
   createdAt?: string;
-    isNewPlayer?: boolean; // Thêm dòng này
+  isNewPlayer?: boolean; // Thêm dòng này
 }
 
 // Danh sách emoji có sẵn cho avatar
@@ -289,56 +255,64 @@ export const AVAILABLE_EMOJIS = [
   '😱', '😖', '😣', '😞', '😓', '😩', '😫', '🥱', '😤', '😡',
   '😠', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺',
   '👻', '👽', '👾', '🤖', '🎃', '😺', '😸', '😹', '😻', '😼',
-  '😽', '🙀', '😿', '😾', '👋', '🤚', '🖐️', '✋', '🖖', '👌',
+  '😽', '🙀', '😿', '😾', '💋', '🤚', '🖐️', '✋', '🖖', '👌',
 ];
 
 // Danh sách các cặp emoji cho quân cờ
 export const PIECE_EMOJI_OPTIONS = [
   { name: 'Cổ điển', black: '⚫', white: '⚪' },
-{ name: 'Đỏ Xanh', black: '🔴', white: '🔵' },
-  { name: 'Động vật', black: '🐯', white: '🐑' },
-{ name: 'Animal', black: '🐰', white: '🐳' },
+  { name: 'Đỏ Xanh', black: '🔴', white: '🔵' },
+  { name: 'Động vật', black: '🯇', white: '🐑' },
+  { name: 'Animal', black: '🐰', white: '🐳' },
   { name: 'Trái cây', black: '🍇', white: '🥥' },
-{ name: 'Hoa quả', black: '🍓', white: '🍊' },
-{ name: 'Caro', black: '❌', white: '⭕' },
-{ name: 'Tan vỡ', black: '💔', white: '🙅' },
+  { name: 'Hoa quả', black: '🍓', white: '🍊' },
+  { name: 'Caro', black: '❌', white: '⭕' },
+  { name: 'Tan vỡ', black: '💔', white: '🙅' },
   { name: 'Hoa', black: '🌺', white: '🌼' },
-  { name: 'Thể thao', black: '⚽', white: '🏐' },
+  { name: 'Thể thao', black: '⚽', white: '🏀' },
   { name: 'Âm nhạc', black: '🎵', white: '🎶' },
   { name: 'Giàu có', black: '💎', white: '💸' },
   { name: 'Thực phẩm', black: '🍫', white: '🥛' },
   { name: 'Giao thông', black: '🚗', white: '🚕' },
   { name: 'Vũ trụ', black: '🌑', white: '🌕' },
- { name: 'Mặt trăng ôm mặt trời', black: '🌜', white: '🌞' },
-{ name: 'Thời tiết', black: '🌤️', white: '⛈️' },
+  { name: 'Mặt trăng ôm mặt trời', black: '🌜', white: '🌞' },
+  { name: 'Thời tiết', black: '🌤️', white: '⛈️' },
   { name: 'Biểu tượng', black: '❤️', white: '💙' },
   { name: 'Hình học', black: '⬛', white: '⬜' },
   { name: 'Ma thuật', black: '🔮', white: '💫' },
 ];
 
 // Utility functions
-export const getCoinChangeForResult = (result: 'win' | 'lose' | 'draw'): number => {
+export const getCoinChangeForResult = (result: 'win' | 'lose' | 'draw' | 'surrender_win' | 'surrender_lose'): number => {
   switch (result) {
     case 'win':
+      return 10;
+    case 'surrender_win': // Thắng do đối thủ đầu hàng
       return 10;
     case 'draw':
       return 5;
     case 'lose':
       return -5;
+    case 'surrender_lose': // Thua do đầu hàng
+      return -10;
     default:
       return 0;
   }
 };
 
-export const getResultMessage = (result: 'win' | 'lose' | 'draw', coinChange: number): string => {
+export const getResultMessage = (result: 'win' | 'lose' | 'draw' | 'surrender_win' | 'surrender_lose', coinChange: number): string => {
   const changeText = coinChange >= 0 ? `+${coinChange}` : `${coinChange}`;
   switch (result) {
     case 'win':
       return `🏆 Chúc mừng! Bạn thắng và được ${changeText} xu!`;
+    case 'surrender_win':
+      return `🎉 Đối thủ đầu hàng! Bạn thắng và được ${changeText} xu!`;
     case 'draw':
       return `🤝 Hòa! Bạn được ${changeText} xu!`;
     case 'lose':
       return `😔 Bạn thua và bị trừ ${Math.abs(coinChange)} xu`;
+    case 'surrender_lose':
+      return `😞 Bạn đã đầu hàng và bị trừ ${Math.abs(coinChange)} xu`;
     default:
       return '';
   }
