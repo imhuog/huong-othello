@@ -25,13 +25,13 @@ const GamePage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen p-2 sm:p-4 lg:p-6">
+    <div className={`min-h-screen p-2 sm:p-4 lg:p-6 ${currentTheme.background}`}>
       <div className="max-w-7xl mx-auto">
         {/* Mobile & Tablet Layout - Stack vertically */}
         <div className="xl:hidden space-y-4 sm:space-y-6">
           {/* Game Board - Top on mobile/tablet */}
           <motion.div
-            className={`flex items-center justify-center rounded-2xl p-4 sm:p-6 shadow-2xl ${currentTheme.background} border border-white/10`}
+            className="flex items-center justify-center rounded-2xl p-4 sm:p-6 shadow-2xl bg-white/5 backdrop-blur-sm border border-white/10"
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5, delay: 0.2 }}
@@ -63,7 +63,7 @@ const GamePage: React.FC = () => {
 
           {/* Game Board - Right Column (3/5 width) */}
           <motion.div
-            className={`xl:col-span-3 flex items-center justify-center rounded-2xl p-6 shadow-2xl ${currentTheme.background} border border-white/10 min-h-[600px]`}
+            className="xl:col-span-3 flex items-center justify-center rounded-2xl p-6 shadow-2xl bg-white/5 backdrop-blur-sm border border-white/10 min-h-[600px]"
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5, delay: 0.2 }}
