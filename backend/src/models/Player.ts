@@ -23,7 +23,6 @@ export interface PlayerModel {
   lastPlayed?: string;
   createdAt?: string;
   isNewPlayer?: boolean; // Thêm thuộc tính này để khắc phục lỗi
-  isVoiceConnected?: boolean; // 👈 THÊM PROPERTY NÀY ĐỂ SỬA LỖI
 }
 
 export interface LoginRequest {
