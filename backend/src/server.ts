@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -9,25 +10,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { database, PlayerData } from './database';
 import { PlayerModel, LoginRequest, LoginResponse, getCoinChangeForResult, getResultMessage } from './models/Player';
 
-// WebRTC Type Declarations
-declare global {
-  interface RTCSessionDescriptionInit {
-    type?: RTCSdpType;
-    sdp?: string;
-  }
-  
-  interface RTCIceCandidateInit {
-    candidate?: string;
-    sdpMid?: string | null;
-    sdpMLineIndex?: number | null;
-    usernameFragment?: string | null;
-  }
-  
-  type RTCSdpType = "answer" | "offer" | "pranswer" | "rollback";
-}
-
 const app = express();
 const server = createServer(app);
+
 
 // Middleware
 app.use(helmet());
@@ -63,7 +48,6 @@ interface Player {
   };
   coins: number;
   isAuthenticated: boolean;
-  isVoiceConnected?: boolean; // NEW: Voice chat support
 }
 
 interface GameState {
@@ -88,7 +72,6 @@ interface Room {
   aiDifficulty?: AIDifficulty;
   createdAt: number;
   lastActivity: number;
-  voiceConnectedUsers?: Set<string>; // NEW: Track voice-connected users
 }
 
 interface ChatMessage {
@@ -97,38 +80,6 @@ interface ChatMessage {
   playerName: string;
   message: string;
   timestamp: number;
-}
-
-// NEW: Voice chat interfaces
-interface VoiceOffer {
-  roomId: string;
-  offer: RTCSessionDescriptionInit;
-  targetPeerId: string;
-}
-
-interface VoiceAnswer {
-  roomId: string;
-  answer: RTCSessionDescriptionInit;
-  targetPeerId: string;
-}
-
-interface VoiceIceCandidate {
-  roomId: string;
-  candidate: RTCIceCandidateInit;
-  targetPeerId: string;
-}
-
-interface VoiceUserJoined {
-  peerId: string;
-}
-
-interface VoiceUserLeft {
-  peerId: string;
-}
-
-interface UserSpeaking {
-  roomId: string;
-  speaking: boolean;
 }
 
 enum AIDifficulty {  
@@ -173,8 +124,7 @@ function createPlayerFromData(socketId: string, playerData: PlayerData, emoji: s
     isReady: false,
     coins: playerData.coins,
     pieceEmoji: pieceEmoji,
-    isAuthenticated: true,
-    isVoiceConnected: false // NEW: Initialize voice connection status
+    isAuthenticated: true
   };
 }
 
@@ -707,7 +657,6 @@ io.on('connection', (socket) => {
         isReady: false,
         pieceEmoji: pieceEmoji,
         isAuthenticated: true,
-        isVoiceConnected: false, // NEW: Initialize voice connection status
         stats: {
           gamesPlayed: playerData.gamesPlayed,
           gamesWon: playerData.gamesWon,
@@ -793,8 +742,7 @@ io.on('connection', (socket) => {
         color: 'black',
         pieceEmoji: playerData.pieceEmoji,
         coins: authenticatedPlayer.coins,
-        isAuthenticated: true,
-        isVoiceConnected: false // NEW: Initialize voice connection status
+        isAuthenticated: true
       };
       
       gameState.players.push(player);
@@ -805,8 +753,7 @@ io.on('connection', (socket) => {
         messages: [],
         isAIGame: false,
         createdAt: Date.now(),
-        lastActivity: Date.now(),
-        voiceConnectedUsers: new Set() // NEW: Initialize voice connected users
+        lastActivity: Date.now()
       };
       
       rooms.set(roomId, room);
@@ -872,8 +819,7 @@ io.on('connection', (socket) => {
         color: 'white',
         pieceEmoji: playerData.pieceEmoji,
         coins: authenticatedPlayer.coins,
-        isAuthenticated: true,
-        isVoiceConnected: false // NEW: Initialize voice connection status
+        isAuthenticated: true
       };
       
       room.gameState.players.push(player);
@@ -915,8 +861,7 @@ io.on('connection', (socket) => {
         color: 'black',
         pieceEmoji: data.playerData.pieceEmoji,
         coins: authenticatedPlayer.coins,
-        isAuthenticated: true,
-        isVoiceConnected: false // NEW: Initialize voice connection status
+        isAuthenticated: true
       };
       
       const aiPlayer: Player = {
@@ -928,8 +873,7 @@ io.on('connection', (socket) => {
         color: 'white',
         pieceEmoji: data.playerData.pieceEmoji,
         coins: 0,
-        isAuthenticated: false,
-        isVoiceConnected: false // NEW: AI doesn't support voice
+        isAuthenticated: false
       };
       
       gameState.players = [humanPlayer, aiPlayer];
@@ -942,8 +886,7 @@ io.on('connection', (socket) => {
         isAIGame: true,
         aiDifficulty: data.difficulty,
         createdAt: Date.now(),
-        lastActivity: Date.now(),
-        voiceConnectedUsers: new Set() // NEW: Initialize voice connected users
+        lastActivity: Date.now()
       };
       
       rooms.set(roomId, room);
@@ -1093,7 +1036,7 @@ io.on('connection', (socket) => {
         // Refresh coins from database
         const playerData = database.getPlayer(p.displayName);
         if (playerData) {
-          return { ...p, coins: playerData.coins, isVoiceConnected: p.isVoiceConnected }; // NEW: Preserve voice connection status
+          return { ...p, coins: playerData.coins };
         }
       }
       return { ...p };
@@ -1114,8 +1057,7 @@ io.on('connection', (socket) => {
         color: 'white',
         pieceEmoji: humanPlayerData?.pieceEmoji,
         coins: 0,
-        isAuthenticated: false,
-        isVoiceConnected: false // NEW: AI doesn't support voice
+        isAuthenticated: false
       };
       
       if (humanPlayerData) {
@@ -1181,152 +1123,6 @@ io.on('connection', (socket) => {
     io.to(data.roomId).emit('newMessage', chatMessage);
   });
 
-  // ========== NEW: Voice Chat Event Handlers ==========
-  
-  // Join voice chat room
-  socket.on('voiceJoinRoom', ({ roomId }: { roomId: string }) => {
-    const room = rooms.get(roomId);
-    if (!room) {
-      socket.emit('error', 'Phòng không tồn tại');
-      return;
-    }
-    
-    // Check if user is in the game room
-    const player = room.gameState.players.find(p => p.id === socket.id);
-    if (!player) {
-      socket.emit('error', 'Bạn không ở trong phòng này');
-      return;
-    }
-    
-    // Don't allow voice chat for AI games
-    if (room.isAIGame) {
-      socket.emit('error', 'Voice chat không khả dụng cho game với AI');
-      return;
-    }
-    
-    // Add user to voice connected users
-    if (!room.voiceConnectedUsers) {
-      room.voiceConnectedUsers = new Set();
-    }
-    room.voiceConnectedUsers.add(socket.id);
-    
-    // Update player voice status
-    player.isVoiceConnected = true;
-    
-    updateRoomActivity(roomId);
-    
-    // Notify other users in the room that someone joined voice chat
-    socket.to(roomId).emit('voiceUserJoined', { peerId: socket.id });
-    
-    // Send current voice connected users to the new joiner
-    const otherVoiceUsers = Array.from(room.voiceConnectedUsers).filter(id => id !== socket.id);
-    otherVoiceUsers.forEach(peerId => {
-      socket.emit('voiceUserJoined', { peerId });
-    });
-    
-    // Update game state to reflect voice connection status
-    io.to(roomId).emit('gameStateUpdate', room.gameState);
-    
-    console.log(`🎤 User ${socket.id} joined voice chat in room ${roomId}`);
-  });
-  
-  // Leave voice chat room
-  socket.on('voiceLeaveRoom', ({ roomId }: { roomId: string }) => {
-    const room = rooms.get(roomId);
-    if (!room) return;
-    
-    // Remove user from voice connected users
-    if (room.voiceConnectedUsers) {
-      room.voiceConnectedUsers.delete(socket.id);
-    }
-    
-    // Update player voice status
-    const player = room.gameState.players.find(p => p.id === socket.id);
-    if (player) {
-      player.isVoiceConnected = false;
-    }
-    
-    updateRoomActivity(roomId);
-    
-    // Notify other users that someone left voice chat
-    socket.to(roomId).emit('voiceUserLeft', { peerId: socket.id });
-    
-    // Update game state to reflect voice connection status
-    io.to(roomId).emit('gameStateUpdate', room.gameState);
-    
-    console.log(`🔇 User ${socket.id} left voice chat in room ${roomId}`);
-  });
-  
-  // Handle WebRTC offer
-  socket.on('voiceOffer', ({ roomId, offer, targetPeerId }: VoiceOffer) => {
-    const room = rooms.get(roomId);
-    if (!room || !room.voiceConnectedUsers?.has(socket.id)) {
-      socket.emit('error', 'Bạn không ở trong voice chat của phòng này');
-      return;
-    }
-    
-    updateRoomActivity(roomId);
-    
-    // Forward offer to target peer
-    socket.to(targetPeerId).emit('voiceOffer', {
-      offer,
-      fromPeerId: socket.id
-    });
-    
-    console.log(`📞 Voice offer from ${socket.id} to ${targetPeerId} in room ${roomId}`);
-  });
-  
-  // Handle WebRTC answer
-  socket.on('voiceAnswer', ({ roomId, answer, targetPeerId }: VoiceAnswer) => {
-    const room = rooms.get(roomId);
-    if (!room || !room.voiceConnectedUsers?.has(socket.id)) {
-      socket.emit('error', 'Bạn không ở trong voice chat của phòng này');
-      return;
-    }
-    
-    updateRoomActivity(roomId);
-    
-    // Forward answer to target peer
-    socket.to(targetPeerId).emit('voiceAnswer', {
-      answer,
-      fromPeerId: socket.id
-    });
-    
-    console.log(`✅ Voice answer from ${socket.id} to ${targetPeerId} in room ${roomId}`);
-  });
-  
-  // Handle ICE candidates
-  socket.on('voiceIceCandidate', ({ roomId, candidate, targetPeerId }: VoiceIceCandidate) => {
-    const room = rooms.get(roomId);
-    if (!room || !room.voiceConnectedUsers?.has(socket.id)) {
-      return; // Silently ignore if not in voice chat
-    }
-    
-    updateRoomActivity(roomId);
-    
-    // Forward ICE candidate to target peer
-    socket.to(targetPeerId).emit('voiceIceCandidate', {
-      candidate,
-      fromPeerId: socket.id
-    });
-  });
-  
-  // Handle speaking status updates
-  socket.on('userSpeaking', ({ roomId, speaking }: UserSpeaking) => {
-    const room = rooms.get(roomId);
-    if (!room || !room.voiceConnectedUsers?.has(socket.id)) {
-      return; // Silently ignore if not in voice chat
-    }
-    
-    updateRoomActivity(roomId);
-    
-    // Broadcast speaking status to all users in the room
-    socket.to(roomId).emit('userSpeaking', {
-      userId: socket.id,
-      speaking
-    });
-  });
-
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
     
@@ -1341,15 +1137,6 @@ io.on('connection', (socket) => {
       const playerIndex = room.gameState.players.findIndex(p => p.id === socket.id);
       if (playerIndex !== -1) {
         console.log(`🚪 Player left room: ${roomId}`);
-        
-        // NEW: Handle voice chat cleanup on disconnect
-        if (room.voiceConnectedUsers && room.voiceConnectedUsers.has(socket.id)) {
-          room.voiceConnectedUsers.delete(socket.id);
-          // Notify other voice users that this user disconnected
-          socket.to(roomId).emit('voiceUserLeft', { peerId: socket.id });
-          console.log(`🔇 User ${socket.id} disconnected from voice chat in room ${roomId}`);
-        }
-        
         room.gameState.players.splice(playerIndex, 1);
         updateRoomActivity(roomId);
         
@@ -1401,10 +1188,7 @@ app.get('/health', (req: Request, res: Response) => {
     timestamp: new Date().toISOString(),
     playersCount: database.getPlayerCount(),
     activeRooms: rooms.size,
-    activeConnections: authenticatedPlayers.size,
-    voiceConnections: Array.from(rooms.values()).reduce((total, room) => 
-      total + (room.voiceConnectedUsers?.size || 0), 0
-    )
+    activeConnections: authenticatedPlayers.size
   });
 });
 
@@ -1465,7 +1249,6 @@ app.get('/api/room/:roomId', (req: Request, res: Response) => {
           playersCount: room.gameState.players.length,
           gameStatus: room.gameState.gameStatus,
           isAIGame: room.isAIGame || false,
-          voiceConnectedUsers: room.voiceConnectedUsers?.size || 0, // NEW: Include voice connection count
           createdAt: new Date(room.createdAt).toISOString(),
           lastActivity: new Date(room.lastActivity).toISOString()
         }
@@ -1489,8 +1272,6 @@ const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Database loaded with ${database.getPlayerCount()} players`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 CORS enabled for: ${process.env.NODE_ENV === 'production' ? 'https://huong-othello.vercel.app' : 'http://localhost:3000'}`);
-  console.log(`🎤 Voice chat support enabled`);
 });
-
