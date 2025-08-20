@@ -37,7 +37,7 @@ interface GameProviderProps {
 }
 
 export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
-  const { socket, currentPlayer } = useSocket();
+  const { socket, currentPlayer, refreshPlayerData } = useSocket();
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [roomId, setRoomId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -45,13 +45,37 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
   const [isAIGame, setIsAIGame] = useState(false);
   const [aiDifficulty, setAiDifficulty] = useState<AIDifficulty | null>(null);
 
+  // Helper function to sync current player coins with game state
+  const syncPlayerCoins = (gameState: GameState) => {
+    if (!currentPlayer || !socket) return gameState;
+    
+    // Find current player in game state and update their coins
+    const updatedPlayers = gameState.players.map(player => {
+      if (player.id === socket.id && player.isAuthenticated) {
+        // Keep coins from current player (which should be fresh from database)
+        return {
+          ...player,
+          coins: currentPlayer.coins
+        };
+      }
+      return player;
+    });
+
+    return {
+      ...gameState,
+      players: updatedPlayers
+    };
+  };
+
   useEffect(() => {
     if (!socket) return;
 
     // Socket event listeners
     socket.on('roomCreated', (data: { roomId: string; gameState: GameState }) => {
       setRoomId(data.roomId);
-      setGameState(data.gameState);
+      // Sync coins when room is created
+      const syncedGameState = syncPlayerCoins(data.gameState);
+      setGameState(syncedGameState);
       setIsAIGame(false);
       setAiDifficulty(null);
       toast.success(`Phòng đã tạo! Mã: ${data.roomId}`);
@@ -59,7 +83,9 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
 
     socket.on('roomJoined', (data: { roomId: string; gameState: GameState }) => {
       setRoomId(data.roomId);
-      setGameState(data.gameState);
+      // Sync coins when joining room
+      const syncedGameState = syncPlayerCoins(data.gameState);
+      setGameState(syncedGameState);
       setIsAIGame(false);
       setAiDifficulty(null);
       toast.success('Đã vào phòng!');
@@ -67,7 +93,9 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
 
     socket.on('aiGameCreated', (data: { roomId: string; gameState: GameState; difficulty: AIDifficulty }) => {
       setRoomId(data.roomId);
-      setGameState(data.gameState);
+      // Sync coins when AI game is created
+      const syncedGameState = syncPlayerCoins(data.gameState);
+      setGameState(syncedGameState);
       setIsAIGame(true);
       setAiDifficulty(data.difficulty);
       toast.success(`Bắt đầu chơi với AI ${data.difficulty.toUpperCase()}!`);
@@ -90,6 +118,11 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
               playerTransaction.result as 'win' | 'lose' | 'draw', 
               playerTransaction.coinChange
             );
+            
+            // Refresh player data to get updated coins from database
+            if (refreshPlayerData && currentPlayer) {
+              refreshPlayerData(currentPlayer.displayName);
+            }
             
             // Show toast notification based on result
             if (playerTransaction.result === 'win') {
@@ -129,7 +162,8 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
           }
         }
         
-        return newGameState;
+        // Always sync player coins with current player data
+        return syncPlayerCoins(newGameState);
       });
     });
 
@@ -154,7 +188,17 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
       socket.off('timerUpdate');
       socket.off('error');
     };
-  }, [socket]);
+  }, [socket, currentPlayer, refreshPlayerData]);
+
+  // Update game state when current player data changes (coins updated)
+  useEffect(() => {
+    if (currentPlayer && gameState) {
+      setGameState(prevState => {
+        if (!prevState) return prevState;
+        return syncPlayerCoins(prevState);
+      });
+    }
+  }, [currentPlayer?.coins]);
 
   const createRoom = (playerData: { name: string; emoji: string; pieceEmoji?: { black: string; white: string } }) => {
     if (!socket || !currentPlayer) {
@@ -199,6 +243,11 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
 
   const newGame = () => {
     if (socket && roomId) {
+      // Refresh player data before starting new game
+      if (refreshPlayerData && currentPlayer) {
+        refreshPlayerData(currentPlayer.displayName);
+      }
+      
       // Send AI info if playing with AI
       if (isAIGame && aiDifficulty) {
         socket.emit('newGame', { roomId, isAI: true, difficulty: aiDifficulty });
