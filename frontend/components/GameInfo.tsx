@@ -8,7 +8,7 @@ import PlayerProfile from './PlayerProfile';
 import toast from 'react-hot-toast';
 
 const GameInfo: React.FC = () => {
-  const { gameState, roomId, newGame, startGame, isAIGame, aiDifficulty, surrenderGame } = useGame();
+  const { gameState, roomId, newGame, startGame, isAIGame, aiDifficulty } = useGame();
   const { socket, currentPlayer, logoutPlayer } = useSocket();
   const [showRules, setShowRules] = useState(false);
 
@@ -16,27 +16,9 @@ const GameInfo: React.FC = () => {
 
   const isHost = gameState.players[0]?.id === socket?.id;
   const canStartGame = gameState.gameStatus === 'waiting' && gameState.players.length === 2;
-  const isGameFinished = gameState.gameStatus === 'finished' || gameState.gameStatus === 'surrendered';
-  const isGamePlaying = gameState.gameStatus === 'playing';
-  
-  // Check if current player can surrender (is their turn and game is playing)
-  const currentPlayerIndex = gameState.players.findIndex(p => p.id === socket?.id);
-  const isCurrentPlayerTurn = gameState.currentPlayer === currentPlayerIndex + 1;
+  const isGameFinished = gameState.gameStatus === 'finished';
 
   const getWinner = () => {
-    // Handle surrender case
-    if (gameState.gameStatus === 'surrendered' && gameState.surrenderedPlayer) {
-      // Winner is the other player
-      const winnerIndex = gameState.surrenderedPlayer === 1 ? 1 : 0; // If player 1 surrendered, player 2 wins (index 1)
-      return {
-        player: gameState.players[winnerIndex],
-        score: gameState.scores[winnerIndex + 1],
-        opponentScore: gameState.scores[gameState.surrenderedPlayer],
-        reason: 'surrender' as const
-      };
-    }
-
-    // Normal game ending
     const player1Score = gameState.scores[1];
     const player2Score = gameState.scores[2];
     
@@ -44,15 +26,13 @@ const GameInfo: React.FC = () => {
       return { 
         player: gameState.players[0], 
         score: player1Score,
-        opponentScore: player2Score,
-        reason: 'normal' as const
+        opponentScore: player2Score
       };
     } else if (player2Score > player1Score) {
       return { 
         player: gameState.players[1], 
         score: player2Score,
-        opponentScore: player1Score,
-        reason: 'normal' as const
+        opponentScore: player1Score
       };
     }
     return null; // Tie
@@ -256,26 +236,8 @@ const GameInfo: React.FC = () => {
             )}
 
             {gameState.gameStatus === 'playing' && (
-              <div className="space-y-3">
-                <div className="text-green-400 font-semibold text-sm sm:text-lg">
-                  🎮 Game đang diễn ra...
-                </div>
-                
-                {/* NEW: Surrender Button - Only show for current player's turn and not AI game */}
-                {!isAIGame && currentPlayerIndex >= 0 && (
-                  <motion.button
-                    onClick={surrenderGame}
-                    className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg transition-colors flex items-center justify-center space-x-2 text-sm"
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.5 }}
-                  >
-                    <span>🏃‍♂️</span>
-                    <span>Đầu hàng (-10 xu)</span>
-                  </motion.button>
-                )}
+              <div className="text-green-400 font-semibold text-sm sm:text-lg">
+                🎮 Game đang diễn ra...
               </div>
             )}
 
@@ -291,17 +253,12 @@ const GameInfo: React.FC = () => {
                   if (winner) {
                     return (
                       <div className="p-4 sm:p-6 bg-gradient-to-r from-yellow-400/20 to-orange-400/20 rounded-xl border-2 border-yellow-400">
-                        <div className="text-3xl sm:text-5xl mb-2 sm:mb-3">
-                          {winner.reason === 'surrender' ? '🏃‍♂️' : '🏆'}
-                        </div>
+                        <div className="text-3xl sm:text-5xl mb-2 sm:mb-3">🏆</div>
                         <div className="text-lg sm:text-2xl font-bold text-yellow-400 mb-2 sm:mb-3">
                           🎉 {winner.player.displayName || winner.player.nickname} thắng!
                         </div>
-                        <div className="text-white text-sm sm:text-lg font-semibold mb-2">
-                          {winner.reason === 'surrender' 
-                            ? 'Thắng do đối thủ đầu hàng' 
-                            : `Tỷ số: ${winner.score} - ${winner.opponentScore}`
-                          }
+                        <div className="text-white text-sm sm:text-lg font-semibold p-2 sm:p-3 border-2 border-yellow-400/50 rounded-lg bg-yellow-400/10 mb-3">
+                          Tỷ số: {winner.score} - {winner.opponentScore}
                         </div>
                         
                         {/* Show coin transaction info */}
@@ -311,13 +268,11 @@ const GameInfo: React.FC = () => {
                               <motion.div
                                 key={index}
                                 className={`
-                                  flex items-center justify-center gap-2 px-4 py-2 rounded-lg border text-sm
+                                  flex items-center justify-center gap-2 px-4 py-2 rounded-lg border
                                   ${transaction.result === 'win' 
                                     ? 'bg-green-500/20 border-green-500/30 text-green-300'
                                     : transaction.result === 'draw'
                                     ? 'bg-blue-500/20 border-blue-500/30 text-blue-300'
-                                    : transaction.result === 'surrender'
-                                    ? 'bg-orange-500/20 border-orange-500/30 text-orange-300'
                                     : 'bg-red-500/20 border-red-500/30 text-red-300'
                                   }
                                 `}
@@ -329,7 +284,7 @@ const GameInfo: React.FC = () => {
                                 <span className="font-bold">
                                   {transaction.nickname}: {transaction.coinChange >= 0 ? '+' : ''}{transaction.coinChange} xu
                                 </span>
-                                <span className="text-xs">
+                                <span className="text-sm">
                                   (Tổng: {transaction.newCoins})
                                 </span>
                               </motion.div>
@@ -355,7 +310,7 @@ const GameInfo: React.FC = () => {
                             {gameState.coinTransactions.map((transaction, index) => (
                               <motion.div
                                 key={index}
-                                className="flex items-center justify-center gap-2 bg-blue-500/20 px-4 py-2 rounded-lg border border-blue-500/30 text-blue-300 text-sm"
+                                className="flex items-center justify-center gap-2 bg-blue-500/20 px-4 py-2 rounded-lg border border-blue-500/30 text-blue-300"
                                 initial={{ scale: 0, opacity: 0 }}
                                 animate={{ scale: 1, opacity: 1 }}
                                 transition={{ delay: 0.5 + index * 0.2, type: "spring" }}
@@ -364,7 +319,7 @@ const GameInfo: React.FC = () => {
                                 <span className="font-bold">
                                   {transaction.nickname}: +{transaction.coinChange} xu
                                 </span>
-                                <span className="text-xs">
+                                <span className="text-sm">
                                   (Tổng: {transaction.newCoins})
                                 </span>
                               </motion.div>
@@ -375,6 +330,10 @@ const GameInfo: React.FC = () => {
                     );
                   }
                 })()}
+              </motion.div>
+            )}
+          </div>
+        </div>
 
         {/* Game Controls */}
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
@@ -461,7 +420,7 @@ const GameInfo: React.FC = () => {
                 </div>
 
                 <div>
-                  <h4 className="font-semibold text-white mb-2">📏 Quy tắc "kẹp":</h4>
+                  <h4 className="font-semibold text-white mb-2">🔍 Quy tắc "kẹp":</h4>
                   <ul className="list-disc list-inside space-y-1">
                     <li>Quân mới đặt và quân cùng màu tạo thành một "đường thẳng"</li>
                     <li>Giữa chúng phải có ít nhất một quân đối thủ</li>
@@ -521,6 +480,5 @@ const GameInfo: React.FC = () => {
     </div>
   );
 };
-
 
 export default GameInfo;
