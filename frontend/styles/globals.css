@@ -2,6 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Root and body background fix */
+:root {
+  background-color: transparent;
+}
+
+html, body {
+  background-color: transparent;
+  margin: 0;
+  padding: 0;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
@@ -167,7 +178,7 @@
 }
 
 .animate-red-hint-pulse {
-  animation: redHintPulse 1.5s ease-in-out infinite;
+  animation: redHintRadialPulse 1.5s ease-in-out infinite;
 }
 
 .animate-red-hint-glow {
@@ -272,10 +283,11 @@
   background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
 }
 
-/* Glass morphism effect */
+/* Glass morphism effect - Fixed transparency */
 .glass {
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
@@ -283,6 +295,7 @@
 @media (max-width: 768px) {
   .glass {
     backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
   }
 }
 
@@ -427,10 +440,15 @@ select:focus {
   }
 }
 
-/* Dark mode support */
+/* Dark mode support - Fixed background override */
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
+  }
+  
+  /* Prevent white backgrounds in dark mode */
+  html, body {
+    background-color: transparent !important;
   }
 }
 
@@ -453,7 +471,7 @@ select:focus {
   }
 }
 
-/* NEW: Voice chat specific styles */
+/* Voice chat specific styles */
 
 /* Voice controls animation */
 .voice-control-enter {
@@ -604,10 +622,11 @@ select:focus {
   }
 }
 
-/* Voice panel glass effect */
+/* Voice panel glass effect - Fixed background transparency */
 .voice-panel {
   background: rgba(31, 41, 55, 0.95);
   backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 
     0 20px 25px -5px rgba(0, 0, 0, 0.1),
@@ -622,9 +641,9 @@ select:focus {
   }
 }
 
-/* Theme transitions */
+/* Theme transitions - Fixed to avoid background color changes */
 * {
-  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+  transition: border-color 0.3s ease, color 0.3s ease, opacity 0.3s ease, transform 0.3s ease;
 }
 
 /* Custom focus styles */
@@ -651,8 +670,8 @@ select:focus {
 /* High contrast mode support */
 @media (prefers-contrast: high) {
   .glass {
-    background: rgba(255, 255, 255, 0.1);
-    border: 2px solid rgba(255, 255, 255, 0.3);
+    background: rgba(0, 0, 0, 0.8);
+    border: 2px solid rgba(255, 255, 255, 0.5);
   }
   
   .voice-panel {
@@ -679,4 +698,20 @@ select:focus {
   .mic-recording {
     animation: none;
   }
+}
+
+/* Additional background fixes */
+* {
+  /* Prevent any element from defaulting to white background */
+  box-sizing: border-box;
+}
+
+*:not(.bg-white):not([class*="bg-white"]) {
+  /* Only apply to elements that don't explicitly want white background */
+  background-color: transparent;
+}
+
+/* Override any potential browser defaults */
+div, span, section, article, main, header, footer, nav, aside {
+  background-color: transparent;
 }
