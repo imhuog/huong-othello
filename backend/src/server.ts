@@ -82,6 +82,25 @@ interface ChatMessage {
   timestamp: number;
 }
 
+// NEW: Voice chat interfaces
+interface VoiceOffer {
+  from: string;
+  to: string;
+  offer: RTCSessionDescriptionInit;
+  nickname: string;
+}
+
+interface VoiceAnswer {
+  from: string;
+  to: string;
+  answer: RTCSessionDescriptionInit;
+}
+
+interface VoiceIceCandidate {
+  from: string;
+  to: string;
+  candidate: RTCIceCandidateInit;
+}
 enum AIDifficulty {  
   EASY = 'easy',
   MEDIUM = 'medium',
@@ -92,6 +111,9 @@ enum AIDifficulty {
 const rooms = new Map<string, Room>();
 const roomTimers = new Map<string, NodeJS.Timeout>();
 const authenticatedPlayers = new Map<string, PlayerModel>(); // socketId -> PlayerModel
+
+/ NEW: Store voice chat participants per room
+const voiceRooms = new Map<string, Set<string>>(); // roomId -> Set of socketIds
 
 // Room cleanup - Remove inactive rooms every 30 minutes
 setInterval(() => {
@@ -107,6 +129,9 @@ setInterval(() => {
         clearInterval(roomTimers.get(roomId)!);
         roomTimers.delete(roomId);
       }
+
+      // Remove voice room
+      voiceRooms.delete(roomId);
       
       // Remove room
       rooms.delete(roomId);
@@ -213,6 +238,27 @@ function awardCoinsToPlayers(room: Room): void {
   
   // Set coin transactions info
   room.gameState.coinTransactions = coinTransactions;
+}
+
+/ NEW: Helper functions for voice chat
+function getPlayerRoom(socketId: string): string | null {
+  for (const [roomId, room] of rooms.entries()) {
+    if (room.gameState.players.some(p => p.id === socketId)) {
+      return roomId;
+    }
+  }
+  return null;
+}
+
+function notifyVoiceParticipants(roomId: string, event: string, data: any, excludeSocketId?: string) {
+  const voiceParticipants = voiceRooms.get(roomId);
+  if (voiceParticipants) {
+    voiceParticipants.forEach(participantId => {
+      if (participantId !== excludeSocketId) {
+        io.to(participantId).emit(event, data);
+      }
+    });
+  }
 }
 
 // Othello game logic (unchanged)
@@ -1275,3 +1321,4 @@ server.listen(PORT, () => {
   console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 CORS enabled for: ${process.env.NODE_ENV === 'production' ? 'https://huong-othello.vercel.app' : 'http://localhost:3000'}`);
 });
+
