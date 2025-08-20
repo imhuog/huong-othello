@@ -164,16 +164,39 @@ function awardCoinsToPlayers(room: Room): void {
   let player1Result: 'win' | 'lose' | 'draw';
   let player2Result: 'win' | 'lose' | 'draw';
   
-  // Determine results
-  if (scores[1] > scores[2]) {
-    player1Result = 'win';
-    player2Result = 'lose';
-  } else if (scores[2] > scores[1]) {
-    player1Result = 'lose';
-    player2Result = 'win';
+ // Kiểm tra đầu hàng trước
+  if (room.gameState.surrenderedPlayerId) {
+    if (room.gameState.surrenderedPlayerId === player1?.id) {
+      player1Result = 'surrender';
+      player2Result = 'win';
+    } else if (room.gameState.surrenderedPlayerId === player2?.id) {
+      player1Result = 'win';
+      player2Result = 'surrender';
+    } else {
+      // Fallback to normal scoring
+      if (scores[1] > scores[2]) {
+        player1Result = 'win';
+        player2Result = 'lose';
+      } else if (scores[2] > scores[1]) {
+        player1Result = 'lose';
+        player2Result = 'win';
+      } else {
+        player1Result = 'draw';
+        player2Result = 'draw';
+      }
+    }
   } else {
-    player1Result = 'draw';
-    player2Result = 'draw';
+    // Determine results normally
+    if (scores[1] > scores[2]) {
+      player1Result = 'win';
+      player2Result = 'lose';
+    } else if (scores[2] > scores[1]) {
+      player1Result = 'lose';
+      player2Result = 'win';
+    } else {
+      player1Result = 'draw';
+      player2Result = 'draw';
+    }
   }
   
   const coinTransactions: any[] = [];
@@ -1321,3 +1344,4 @@ server.listen(PORT, () => {
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 CORS enabled for: ${process.env.NODE_ENV === 'production' ? 'https://huong-othello.vercel.app' : 'http://localhost:3000'}`);
 });
+
