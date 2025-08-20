@@ -117,10 +117,17 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
           );
           
           if (playerTransaction) {
-            const message = getResultMessage(
-              playerTransaction.result as 'win' | 'lose' | 'draw' | 'surrender', 
-              playerTransaction.coinChange
-            );
+            // Map surrender result to appropriate result type
+            let mappedResult: 'win' | 'lose' | 'draw' | 'surrender_win' | 'surrender_lose';
+            
+            if (playerTransaction.result === 'surrender') {
+              // If player surrendered, they lose; if opponent surrendered, they win
+              mappedResult = playerTransaction.coinChange > 0 ? 'surrender_win' : 'surrender_lose';
+            } else {
+              mappedResult = playerTransaction.result as 'win' | 'lose' | 'draw';
+            }
+            
+            const message = getResultMessage(mappedResult, playerTransaction.coinChange);
             
             // Refresh player data to get updated coins from database
             if (refreshPlayerData && currentPlayer) {
@@ -128,7 +135,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
             }
             
             // Show toast notification based on result
-            if (playerTransaction.result === 'win') {
+            if (playerTransaction.result === 'win' || (playerTransaction.result === 'surrender' && playerTransaction.coinChange > 0)) {
               toast.success(message, {
                 duration: 5000,
                 style: {
@@ -150,28 +157,21 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
                 },
                 icon: '🤝',
               });
-            } else if (playerTransaction.result === 'lose') {
+            } else {
+              // Handle lose or surrender_lose
               toast.error(message, {
-                duration: 4000,
+                duration: playerTransaction.result === 'surrender' ? 5000 : 4000,
                 style: {
-                  background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                  background: playerTransaction.result === 'surrender' 
+                    ? 'linear-gradient(135deg, #f97316, #ea580c)'
+                    : 'linear-gradient(135deg, #ef4444, #dc2626)',
                   color: 'white',
                   fontWeight: 'bold',
-                  border: '2px solid #dc2626',
+                  border: playerTransaction.result === 'surrender' 
+                    ? '2px solid #ea580c'
+                    : '2px solid #dc2626',
                 },
-                icon: '😔',
-              });
-            } else if (playerTransaction.result === 'surrender') {
-              // NEW: Handle surrender notification
-              toast.error(message, {
-                duration: 5000,
-                style: {
-                  background: 'linear-gradient(135deg, #f97316, #ea580c)',
-                  color: 'white',
-                  fontWeight: 'bold',
-                  border: '2px solid #ea580c',
-                },
-                icon: '🏃‍♂️',
+                icon: playerTransaction.result === 'surrender' ? '🏃‍♂️' : '😔',
               });
             }
           }
