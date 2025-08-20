@@ -2,17 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Root and body background fix */
-:root {
-  background-color: transparent;
-}
-
-html, body {
-  background-color: transparent;
-  margin: 0;
-  padding: 0;
-}
-
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
@@ -283,7 +272,7 @@ html, body {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
 }
 
-/* Glass morphism effect - Fixed transparency */
+/* Glass morphism effect */
 .glass {
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(10px);
@@ -437,18 +426,6 @@ select:focus {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
-  }
-}
-
-/* Dark mode support - Fixed background override */
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-  }
-  
-  /* Prevent white backgrounds in dark mode */
-  html, body {
-    background-color: transparent !important;
   }
 }
 
@@ -622,7 +599,7 @@ select:focus {
   }
 }
 
-/* Voice panel glass effect - Fixed background transparency */
+/* Voice panel glass effect */
 .voice-panel {
   background: rgba(31, 41, 55, 0.95);
   backdrop-filter: blur(16px);
@@ -641,7 +618,7 @@ select:focus {
   }
 }
 
-/* Theme transitions - Fixed to avoid background color changes */
+/* Theme transitions */
 * {
   transition: border-color 0.3s ease, color 0.3s ease, opacity 0.3s ease, transform 0.3s ease;
 }
@@ -698,20 +675,4 @@ select:focus {
   .mic-recording {
     animation: none;
   }
-}
-
-/* Additional background fixes */
-* {
-  /* Prevent any element from defaulting to white background */
-  box-sizing: border-box;
-}
-
-*:not(.bg-white):not([class*="bg-white"]) {
-  /* Only apply to elements that don't explicitly want white background */
-  background-color: transparent;
-}
-
-/* Override any potential browser defaults */
-div, span, section, article, main, header, footer, nav, aside {
-  background-color: transparent;
 }
