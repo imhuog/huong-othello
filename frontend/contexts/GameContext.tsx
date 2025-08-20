@@ -41,6 +41,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [roomId, setRoomId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Initialize with the classic theme (first theme in the array)
   const [currentTheme, setCurrentTheme] = useState<ThemeColors>(BOARD_THEMES[0]);
   const [isAIGame, setIsAIGame] = useState(false);
   const [aiDifficulty, setAiDifficulty] = useState<AIDifficulty | null>(null);
