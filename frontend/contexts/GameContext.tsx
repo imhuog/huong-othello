@@ -1,3 +1,4 @@
+// frontend/contexts/GameContext.tsx
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { GameState, ChatMessage, ThemeColors, BOARD_THEMES, AIDifficulty, CoinTransaction, getResultMessage } from '../types';
 import { useSocket } from './SocketContext';
@@ -20,6 +21,7 @@ interface GameContextType {
   newGame: () => void;
   sendMessage: (message: string) => void;
   setTheme: (theme: ThemeColors) => void;
+  surrenderGame: () => void; // NEW: Surrender function
 }
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
@@ -106,7 +108,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
       setGameState(prevState => {
         // Show coin transaction notifications
         if (newGameState.coinTransactions && 
-            newGameState.gameStatus === 'finished' &&
+            (newGameState.gameStatus === 'finished' || newGameState.gameStatus === 'surrendered') &&
             (!prevState || !prevState.coinTransactions)) {
           
           // Find current player's transaction
@@ -116,7 +118,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
           
           if (playerTransaction) {
             const message = getResultMessage(
-              playerTransaction.result as 'win' | 'lose' | 'draw', 
+              playerTransaction.result as 'win' | 'lose' | 'draw' | 'surrender', 
               playerTransaction.coinChange
             );
             
@@ -158,6 +160,18 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
                   border: '2px solid #dc2626',
                 },
                 icon: '😔',
+              });
+            } else if (playerTransaction.result === 'surrender') {
+              // NEW: Handle surrender notification
+              toast.error(message, {
+                duration: 5000,
+                style: {
+                  background: 'linear-gradient(135deg, #f97316, #ea580c)',
+                  color: 'white',
+                  fontWeight: 'bold',
+                  border: '2px solid #ea580c',
+                },
+                icon: '🏃‍♂️',
               });
             }
           }
@@ -273,6 +287,34 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
     toast.success(`Đã chọn theme ${theme.name} ${theme.emoji}`);
   };
 
+  // NEW: Surrender function
+  const surrenderGame = () => {
+    if (!socket || !roomId || !gameState) {
+      toast.error('Không thể đầu hàng lúc này!');
+      return;
+    }
+
+    if (gameState.gameStatus !== 'playing') {
+      toast.error('Chỉ có thể đầu hàng khi game đang diễn ra!');
+      return;
+    }
+
+    // Show confirmation dialog
+    const confirmed = window.confirm(
+      '🏃‍♂️ Bạn có chắc chắn muốn đầu hàng?\n\n' +
+      '⚠️ Lưu ý: Bạn sẽ bị trừ 10 xu và người chơi còn lại sẽ được +10 xu.'
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    // Emit surrender event
+    socket.emit('surrenderGame', roomId);
+    
+    toast.loading('Đang xử lý đầu hàng...', { duration: 2000 });
+  };
+
   return (
     <GameContext.Provider
       value={{
@@ -290,6 +332,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
         newGame,
         sendMessage,
         setTheme,
+        surrenderGame, // NEW: Add surrender function to context
       }}
     >
       {children}
