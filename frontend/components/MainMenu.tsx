@@ -7,7 +7,7 @@ import ThemeSelector from './ThemeSelector';
 import PlayerProfile from './PlayerProfile';
 
 const MainMenu: React.FC = () => {
-  const { createRoom, joinRoom, createAIGame, currentRoomId } = useGame();
+  const { createRoom, joinRoom, createAIGame } = useGame();
   const { currentPlayer, logoutPlayer } = useSocket();
   const [activeTab, setActiveTab] = useState<'create' | 'join' | 'ai'>('create');
   const [roomId, setRoomId] = useState('');
@@ -15,7 +15,7 @@ const MainMenu: React.FC = () => {
   const [selectedPieceStyle, setSelectedPieceStyle] = useState(PIECE_EMOJI_OPTIONS[0]);
   const [showPieceSelector, setShowPieceSelector] = useState(false);
   
-  // Room sharing state
+  // Room sharing state - FIXED: Better state management
   const [showRoomShare, setShowRoomShare] = useState(false);
   const [createdRoomId, setCreatedRoomId] = useState('');
   const [copySuccess, setCopySuccess] = useState(false);
@@ -43,11 +43,15 @@ const MainMenu: React.FC = () => {
     }
   }, [currentPlayer]);
 
-  // Listen for room creation success
+  // FIXED: Listen for room creation from GameContext
+  const { roomId: currentRoomId } = useGame();
   useEffect(() => {
+    // When a new room is created, show the sharing modal
     if (currentRoomId && currentRoomId !== createdRoomId) {
       setCreatedRoomId(currentRoomId);
       setShowRoomShare(true);
+      // Reset copy success state
+      setCopySuccess(false);
     }
   }, [currentRoomId, createdRoomId]);
 
@@ -96,7 +100,7 @@ const MainMenu: React.FC = () => {
     }
   };
 
-  // Copy room link to clipboard
+  // FIXED: Better copy room link function
   const copyRoomLink = async () => {
     const roomLink = `${window.location.origin}?room=${createdRoomId}`;
     try {
@@ -107,16 +111,24 @@ const MainMenu: React.FC = () => {
       // Fallback for older browsers
       const textArea = document.createElement('textarea');
       textArea.value = roomLink;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      textArea.style.top = '-999999px';
       document.body.appendChild(textArea);
+      textArea.focus();
       textArea.select();
-      document.execCommand('copy');
+      try {
+        document.execCommand('copy');
+        setCopySuccess(true);
+        setTimeout(() => setCopySuccess(false), 2000);
+      } catch (err2) {
+        console.error('Failed to copy: ', err2);
+      }
       document.body.removeChild(textArea);
-      setCopySuccess(true);
-      setTimeout(() => setCopySuccess(false), 2000);
     }
   };
 
-  // Share room link via Web Share API (mobile)
+  // FIXED: Better share room link function
   const shareRoomLink = async () => {
     const roomLink = `${window.location.origin}?room=${createdRoomId}`;
     if (navigator.share) {
@@ -127,11 +139,19 @@ const MainMenu: React.FC = () => {
           url: roomLink,
         });
       } catch (err) {
-        copyRoomLink(); // Fallback to copy
+        // If share fails, fallback to copy
+        copyRoomLink();
       }
     } else {
-      copyRoomLink(); // Fallback to copy
+      // If share API not supported, fallback to copy
+      copyRoomLink();
     }
+  };
+
+  // FIXED: Close room share modal function
+  const closeRoomShare = () => {
+    setShowRoomShare(false);
+    setCopySuccess(false);
   };
 
   if (!currentPlayer) {
@@ -142,17 +162,18 @@ const MainMenu: React.FC = () => {
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center p-4">
       <div className="w-full max-w-4xl">
         
-        {/* Room Share Modal */}
+        {/* FIXED: Room Share Modal with better styling and functionality */}
         <AnimatePresence>
-          {showRoomShare && (
+          {showRoomShare && createdRoomId && (
             <motion.div
-              className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+              className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
+              onClick={closeRoomShare} // Click backdrop to close
             >
               <motion.div
-                className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 shadow-2xl border border-white/20 max-w-md w-full"
+                className="bg-white/15 backdrop-blur-md rounded-3xl p-8 shadow-2xl border border-white/30 max-w-md w-full"
                 initial={{ scale: 0, rotate: -180 }}
                 animate={{ scale: 1, rotate: 0 }}
                 exit={{ scale: 0, rotate: 180 }}
@@ -161,10 +182,11 @@ const MainMenu: React.FC = () => {
                   stiffness: 200, 
                   damping: 15 
                 }}
+                onClick={(e) => e.stopPropagation()} // Prevent closing when clicking modal content
               >
                 <div className="text-center text-white">
                   <motion.div
-                    className="text-4xl mb-4"
+                    className="text-5xl mb-4"
                     animate={{ 
                       rotate: [0, 10, -10, 10, 0],
                       scale: [1, 1.1, 1, 1.1, 1]
@@ -178,50 +200,59 @@ const MainMenu: React.FC = () => {
                     🎉
                   </motion.div>
                   
-                  <h2 className="text-2xl font-bold mb-2">Phòng đã tạo thành công!</h2>
-                  <p className="text-gray-300 mb-4">Mời bạn bè tham gia bằng cách chia sẻ link hoặc mã phòng</p>
+                  <h2 className="text-2xl sm:text-3xl font-bold mb-3">Phòng đã tạo thành công!</h2>
+                  <p className="text-gray-300 mb-6">Mời bạn bè tham gia bằng cách chia sẻ link hoặc mã phòng</p>
                   
-                  {/* Room ID Display */}
-                  <div className="bg-black/30 rounded-lg p-4 mb-4">
-                    <p className="text-sm text-gray-300 mb-2">Mã phòng:</p>
-                    <p className="text-3xl font-bold font-mono text-yellow-400">{createdRoomId}</p>
+                  {/* Room ID Display - Enhanced */}
+                  <div className="bg-black/40 rounded-xl p-6 mb-6 border border-white/20">
+                    <p className="text-sm text-gray-400 mb-2">Mã phòng:</p>
+                    <p className="text-4xl font-bold font-mono text-yellow-400 tracking-wider">
+                      {createdRoomId}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-2">
+                      Link: {window.location.origin}?room={createdRoomId}
+                    </p>
                   </div>
                   
-                  {/* Action Buttons */}
+                  {/* Action Buttons - Enhanced */}
                   <div className="space-y-3">
                     <motion.button
                       onClick={shareRoomLink}
-                      className="w-full py-3 bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center space-x-2"
+                      className="w-full py-4 bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 rounded-xl font-semibold transition-all duration-200 flex items-center justify-center space-x-3 shadow-lg"
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                     >
-                      <span>📤</span>
-                      <span className="hidden sm:inline">Chia sẻ link</span>
-                      <span className="sm:hidden">Share</span>
+                      <span className="text-xl">📤</span>
+                      <span>Chia sẻ link phòng</span>
                     </motion.button>
                     
                     <motion.button
                       onClick={copyRoomLink}
-                      className={`w-full py-3 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center space-x-2 ${
+                      className={`w-full py-4 rounded-xl font-semibold transition-all duration-200 flex items-center justify-center space-x-3 shadow-lg ${
                         copySuccess 
-                          ? 'bg-green-600 text-white' 
-                          : 'bg-white/20 hover:bg-white/30 border border-white/30'
+                          ? 'bg-green-600 text-white border-green-400' 
+                          : 'bg-white/20 hover:bg-white/30 border border-white/40'
                       }`}
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                     >
-                      <span>{copySuccess ? '✅' : '📋'}</span>
+                      <span className="text-xl">{copySuccess ? '✅' : '📋'}</span>
                       <span>{copySuccess ? 'Đã sao chép!' : 'Sao chép link'}</span>
                     </motion.button>
                     
                     <motion.button
-                      onClick={() => setShowRoomShare(false)}
-                      className="w-full py-2 text-gray-300 hover:text-white transition-colors"
+                      onClick={closeRoomShare}
+                      className="w-full py-3 text-gray-300 hover:text-white transition-colors border border-gray-500/30 rounded-xl hover:bg-white/10"
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                     >
                       Đóng
                     </motion.button>
+                  </div>
+
+                  {/* Additional info */}
+                  <div className="mt-6 text-xs text-gray-400 bg-white/10 rounded-lg p-3">
+                    💡 Tip: Bạn bè có thể tham gia bằng cách nhấp vào link hoặc nhập mã phòng trong tab "Vào phòng"
                   </div>
                 </div>
               </motion.div>
@@ -304,7 +335,7 @@ const MainMenu: React.FC = () => {
                     <span>{selectedPieceStyle.name}</span>
                   </div>
                   <span className={`transform transition-transform ${showPieceSelector ? 'rotate-180' : ''}`}>
-                    ⌄
+                    ▼
                   </span>
                 </button>
 
@@ -380,7 +411,7 @@ const MainMenu: React.FC = () => {
                 >
                   <div>
                     <label className="block text-white font-semibold mb-2">
-                      🔒 Mã phòng:
+                      🔑 Mã phòng:
                     </label>
                     <input
                       type="text"
@@ -560,7 +591,7 @@ const MainMenu: React.FC = () => {
                     <span>{selectedPieceStyle.name}</span>
                   </div>
                   <span className={`transform transition-transform ${showPieceSelector ? 'rotate-180' : ''}`}>
-                    ⌄
+                    ▼
                   </span>
                 </button>
 
@@ -636,7 +667,7 @@ const MainMenu: React.FC = () => {
                 >
                   <div>
                     <label className="block text-white font-semibold mb-2">
-                      🔒 Mã phòng:
+                      🔑 Mã phòng:
                     </label>
                     <input
                       type="text"
