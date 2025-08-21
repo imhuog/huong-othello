@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useRouter } from 'next/router';
 import { useGame } from '../contexts/GameContext';
 import { useSocket } from '../contexts/SocketContext';
 import Board from '../components/Board';
 import GameInfo from '../components/GameInfo';
 import Chat from '../components/Chat';
-import VoiceControls from '../components/VoiceControls'; // NEW: Import VoiceControls
+import VoiceControls from '../components/VoiceControls';
 
 const GamePage: React.FC = () => {
-  const { gameState, currentTheme } = useGame();
+  const { gameState, currentTheme, resetGameState } = useGame();
   const { socket } = useSocket();
+  const router = useRouter();
   const [gameEndNotification, setGameEndNotification] = useState<{
     show: boolean;
     type: 'surrender' | 'normal' | 'timeout';
@@ -21,6 +23,16 @@ const GamePage: React.FC = () => {
     message: '',
     isWinner: false
   });
+
+  // Handle back to menu
+  const handleBackToMenu = () => {
+    // Reset game state
+    if (resetGameState) {
+      resetGameState();
+    }
+    // Navigate back to home
+    router.push('/');
+  };
 
   // Handle game end notifications (surrender, timeout, normal win/lose)
   useEffect(() => {
@@ -161,6 +173,20 @@ const GamePage: React.FC = () => {
 
   return (
     <div className={`min-h-screen p-2 sm:p-4 lg:p-6 ${getBackgroundClass()}`}>
+      {/* Back to Menu Button - Fixed position */}
+      <motion.button
+        onClick={handleBackToMenu}
+        className="fixed top-4 left-4 z-40 px-4 py-2 bg-black/50 hover:bg-black/70 text-white rounded-lg border border-white/20 backdrop-blur-sm transition-all duration-200 flex items-center space-x-2"
+        initial={{ opacity: 0, x: -20 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ delay: 0.3 }}
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+      >
+        <span className="text-lg">🏠</span>
+        <span className="hidden sm:inline">Menu</span>
+      </motion.button>
+
       {/* Game End Notification */}
       <AnimatePresence>
         {gameEndNotification.show && (
@@ -321,7 +347,7 @@ const GamePage: React.FC = () => {
       {/* Chat Component - Fixed position */}
       <Chat />
       
-      {/* NEW: Voice Controls - Fixed position */}
+      {/* Voice Controls - Fixed position */}
       <VoiceControls />
     </div>
   );
