@@ -165,7 +165,13 @@ const GamePage: React.FC = () => {
   // FIXED: Loading state with better UX
   if (!gameState) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center">
+      <div 
+        className="flex items-center justify-center" 
+        style={{
+          background: 'linear-gradient(135deg, #581c87 0%, #1e40af 50%, #312e81 100%)',
+          minHeight: '100vh'
+        }}
+      >
         <motion.div
           className="text-center text-white"
           initial={{ opacity: 0 }}
@@ -188,26 +194,20 @@ const GamePage: React.FC = () => {
     );
   }
 
-  // FIXED: Get background class - Always return a valid gradient background
-  const getBackgroundClass = () => {
-    // Check if theme exists and has a valid background
-    if (currentTheme?.background && 
-        currentTheme.background !== '' && 
-        !currentTheme.background.includes('white') &&
-        currentTheme.background.includes('bg-')) {
-      return currentTheme.background;
-    }
-    
-    // Always return a beautiful gradient background as fallback
-    // This matches common game backgrounds and ensures no white background
-    return 'bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900';
+  // FIXED: Get background style - Force inline styles to ensure background shows
+  const getBackgroundStyle = () => {
+    // Always return inline gradient styles to override any CSS issues
+    return {
+      background: 'linear-gradient(135deg, #581c87 0%, #1e40af 50%, #312e81 100%)',
+      minHeight: '100vh'
+    };
   };
 
-  // Get the background class once to avoid recalculation
-  const backgroundClass = getBackgroundClass();
-
   return (
-    <div className={`min-h-screen p-2 sm:p-4 lg:p-6 ${backgroundClass}`}>
+    <div 
+      className="p-2 sm:p-4 lg:p-6" 
+      style={getBackgroundStyle()}
+    >
       {/* FIXED: Enhanced Back to Menu Button - Always visible and functional */}
       <motion.button
         onClick={handleBackToMenu}
