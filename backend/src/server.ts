@@ -13,6 +13,7 @@ import { PlayerModel, LoginRequest, LoginResponse, getCoinChangeForResult, getRe
 const app = express();
 const server = createServer(app);
 
+
 // Middleware
 app.use(helmet());
 app.use(compression());
@@ -59,9 +60,9 @@ interface GameState {
   timeLeft: number;
   winnerId?: string;
   lastMove?: { row: number; col: number; playerId: string };
-  surrenderedPlayerId?: string; // Added this property
   coinTransactions?: { playerId: string; nickname: string; oldCoins: number; newCoins: number; coinChange: number; result: string }[];
   coinsAwarded?: { playerId: string; amount: number; result: 'win' | 'lose' | 'draw' | 'surrender' };
+  surrenderedPlayerId?: string; // NEW: Track who surrendered
 }
 
 interface Room {
@@ -101,7 +102,6 @@ interface VoiceIceCandidate {
   to: string;
   candidate: any; // WebRTC ICE candidate object
 }
-
 enum AIDifficulty {  
   EASY = 'easy',
   MEDIUM = 'medium',
@@ -162,17 +162,17 @@ function awardCoinsToPlayers(room: Room): void {
   const player1 = room.gameState.players[0];
   const player2 = room.gameState.players[1];
   
-  let player1Result: 'win' | 'lose' | 'draw';
-  let player2Result: 'win' | 'lose' | 'draw';
+  let player1Result: 'win' | 'lose' | 'draw' | 'surrender';
+  let player2Result: 'win' | 'lose' | 'draw' | 'surrender';
   
-  // Kiểm tra đầu hàng trước
+  // Check đầu hàng trước
   if (room.gameState.surrenderedPlayerId) {
     if (room.gameState.surrenderedPlayerId === player1?.id) {
-      player1Result = 'lose'; // Player who surrendered loses
+      player1Result = 'surrender';
       player2Result = 'win';
     } else if (room.gameState.surrenderedPlayerId === player2?.id) {
       player1Result = 'win';
-      player2Result = 'lose'; // Player who surrendered loses
+      player2Result = 'surrender';
     } else {
       // Fallback to normal scoring
       if (scores[1] > scores[2]) {
@@ -1005,42 +1005,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Add surrender handler
-  socket.on('surrender', (roomId: string) => {
-    const room = rooms.get(roomId);
-    if (!room || room.gameState.gameStatus !== 'playing') {
-      socket.emit('error', 'Game không khả dụng');
-      return;
-    }
-    
-    const player = room.gameState.players.find(p => p.id === socket.id);
-    if (!player) {
-      socket.emit('error', 'Bạn không ở trong phòng này');
-      return;
-    }
-    
-    // Set surrender flag
-    room.gameState.surrenderedPlayerId = socket.id;
-    room.gameState.gameStatus = 'finished';
-    
-    // Clear timer
-    if (roomTimers.has(roomId)) {
-      clearInterval(roomTimers.get(roomId)!);
-      roomTimers.delete(roomId);
-    }
-    
-    // Determine winner (the other player)
-    const otherPlayer = room.gameState.players.find(p => p.id !== socket.id);
-    if (otherPlayer) {
-      room.gameState.winnerId = otherPlayer.id;
-    }
-    
-    updateRoomActivity(roomId);
-    awardCoinsToPlayers(room);
-    
-    io.to(roomId).emit('gameStateUpdate', room.gameState);
-  });
-
   socket.on('makeMove', (data: { roomId: string; row: number; col: number; difficulty?: AIDifficulty }) => {
     const room = rooms.get(data.roomId);
     if (!room || room.gameState.gameStatus !== 'playing') {
@@ -1118,6 +1082,67 @@ io.on('connection', (socket) => {
     }
   });
 
+  // NEW: Handle surrender game
+  socket.on('surrenderGame', (roomId: string) => {
+    console.log('🏃‍♂️ Surrender request from:', socket.id, 'in room:', roomId);
+    
+    const room = rooms.get(roomId);
+    if (!room) {
+      console.log('❌ Surrender failed: Room not found');
+      socket.emit('error', 'Phòng không tồn tại');
+      return;
+    }
+
+    if (room.gameState.gameStatus !== 'playing') {
+      console.log('❌ Surrender failed: Game not in playing status');
+      socket.emit('error', 'Chỉ có thể đầu hàng khi game đang diễn ra!');
+      return;
+    }
+
+    // Check if the surrendering player is in the game
+    const surrenderingPlayer = room.gameState.players.find(p => p.id === socket.id);
+    if (!surrenderingPlayer) {
+      console.log('❌ Surrender failed: Player not in game');
+      socket.emit('error', 'Bạn không ở trong game này!');
+      return;
+    }
+
+    // Cannot surrender against AI in some cases, but allow for now
+    // const opponentPlayer = room.gameState.players.find(p => p.id !== socket.id);
+    
+    try {
+      // Set game as finished and mark who surrendered
+      room.gameState.gameStatus = 'finished';
+      room.gameState.surrenderedPlayerId = socket.id;
+      
+      // Clear timer
+      if (roomTimers.has(roomId)) {
+        clearInterval(roomTimers.get(roomId)!);
+        roomTimers.delete(roomId);
+      }
+
+      // Determine winner (the other player)
+      const winnerPlayer = room.gameState.players.find(p => p.id !== socket.id);
+      if (winnerPlayer) {
+        room.gameState.winnerId = winnerPlayer.id;
+      }
+
+      updateRoomActivity(roomId);
+      
+      // Award coins (surrendering player loses 10, winner gains 10)
+      awardCoinsToPlayers(room);
+      
+      console.log(`✅ Player ${surrenderingPlayer.displayName} surrendered in room ${roomId}`);
+      
+      // Broadcast the updated game state
+      io.to(roomId).emit('gameStateUpdate', room.gameState);
+      
+    } catch (error) {
+      console.error('💥 Surrender error:', error);
+      socket.emit('error', 'Có lỗi xảy ra khi đầu hàng. Vui lòng thử lại.');
+    }
+  });
+
   socket.on('newGame', (data: { roomId: string; isAI?: boolean; difficulty?: AIDifficulty } | string) => {
     const roomId = typeof data === 'string' ? data : data.roomId;
     const isAI = typeof data === 'object' ? data.isAI : false;
@@ -1191,9 +1216,8 @@ io.on('connection', (socket) => {
       room.aiDifficulty = undefined;
     }
     
-    // Clear coin transactions and surrender flag for new game
+    // Clear coin transactions for new game
     room.gameState.coinTransactions = undefined;
-    room.gameState.surrenderedPlayerId = undefined;
     
     io.to(roomId).emit('gameStateUpdate', room.gameState);
   });
