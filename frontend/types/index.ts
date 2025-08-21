@@ -150,14 +150,14 @@ export interface GameState {
   board: (number | null)[][];
   players: Player[];
   currentPlayer: number;
-  gameStatus: 'waiting' | 'playing' | 'finished';
+  gameStatus: 'waiting' | 'playing' | 'finished' | 'surrendered'; // Thêm 'surrendered'
   scores: { [key: number]: number };
   validMoves: [number, number][];
   timeLeft: number;
   winnerId?: string;
-  coinTransactions?: CoinTransaction[]; // Thêm thông tin giao dịch xu
-  coinsAwarded?: CoinsAwarded; // Thêm thuộc tính này để fix lỗi
-  surrenderedPlayerId?: string; // NEW: Track who surrendered
+  coinTransactions?: CoinTransaction[];
+  coinsAwarded?: CoinsAwarded;
+  surrenderedPlayerId?: string;
 }
 
 export interface Player {
