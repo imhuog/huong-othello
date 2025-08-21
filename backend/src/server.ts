@@ -61,8 +61,7 @@ interface GameState {
   winnerId?: string;
   lastMove?: { row: number; col: number; playerId: string };
   coinTransactions?: { playerId: string; nickname: string; oldCoins: number; newCoins: number; coinChange: number; result: string }[];
-  coinsAwarded?: { playerId: string; amount: number; result: 'win' | 'lose' | 'draw' | 'surrender' };
-  surrenderedPlayerId?: string; // NEW: Track who surrendered
+  coinsAwarded?: { playerId: string; amount: number; result: 'win' | 'lose' | 'draw' };
 }
 
 interface Room {
@@ -83,25 +82,6 @@ interface ChatMessage {
   timestamp: number;
 }
 
-// NEW: Voice chat interfaces
-interface VoiceOffer {
-  from: string;
-  to: string;
-  offer: any; // WebRTC offer object
-  nickname: string;
-}
-
-interface VoiceAnswer {
-  from: string;
-  to: string;
-  answer: any; // WebRTC answer object
-}
-
-interface VoiceIceCandidate {
-  from: string;
-  to: string;
-  candidate: any; // WebRTC ICE candidate object
-}
 enum AIDifficulty {  
   EASY = 'easy',
   MEDIUM = 'medium',
@@ -112,9 +92,6 @@ enum AIDifficulty {
 const rooms = new Map<string, Room>();
 const roomTimers = new Map<string, NodeJS.Timeout>();
 const authenticatedPlayers = new Map<string, PlayerModel>(); // socketId -> PlayerModel
-
-// NEW: Store voice chat participants per room
-const voiceRooms = new Map<string, Set<string>>(); // roomId -> Set of socketIds
 
 // Room cleanup - Remove inactive rooms every 30 minutes
 setInterval(() => {
@@ -130,9 +107,6 @@ setInterval(() => {
         clearInterval(roomTimers.get(roomId)!);
         roomTimers.delete(roomId);
       }
-
-      // Remove voice room
-      voiceRooms.delete(roomId);
       
       // Remove room
       rooms.delete(roomId);
@@ -162,42 +136,19 @@ function awardCoinsToPlayers(room: Room): void {
   const player1 = room.gameState.players[0];
   const player2 = room.gameState.players[1];
   
-  let player1Result: 'win' | 'lose' | 'draw' | 'surrender';
-  let player2Result: 'win' | 'lose' | 'draw' | 'surrender';
+  let player1Result: 'win' | 'lose' | 'draw';
+  let player2Result: 'win' | 'lose' | 'draw';
   
-  // Check đầu hàng trước
-  if (room.gameState.surrenderedPlayerId) {
-    if (room.gameState.surrenderedPlayerId === player1?.id) {
-      player1Result = 'surrender';
-      player2Result = 'win';
-    } else if (room.gameState.surrenderedPlayerId === player2?.id) {
-      player1Result = 'win';
-      player2Result = 'surrender';
-    } else {
-      // Fallback to normal scoring
-      if (scores[1] > scores[2]) {
-        player1Result = 'win';
-        player2Result = 'lose';
-      } else if (scores[2] > scores[1]) {
-        player1Result = 'lose';
-        player2Result = 'win';
-      } else {
-        player1Result = 'draw';
-        player2Result = 'draw';
-      }
-    }
+  // Determine results
+  if (scores[1] > scores[2]) {
+    player1Result = 'win';
+    player2Result = 'lose';
+  } else if (scores[2] > scores[1]) {
+    player1Result = 'lose';
+    player2Result = 'win';
   } else {
-    // Determine results normally
-    if (scores[1] > scores[2]) {
-      player1Result = 'win';
-      player2Result = 'lose';
-    } else if (scores[2] > scores[1]) {
-      player1Result = 'lose';
-      player2Result = 'win';
-    } else {
-      player1Result = 'draw';
-      player2Result = 'draw';
-    }
+    player1Result = 'draw';
+    player2Result = 'draw';
   }
   
   const coinTransactions: any[] = [];
@@ -262,27 +213,6 @@ function awardCoinsToPlayers(room: Room): void {
   
   // Set coin transactions info
   room.gameState.coinTransactions = coinTransactions;
-}
-
-// NEW: Helper functions for voice chat
-function getPlayerRoom(socketId: string): string | null {
-  for (const [roomId, room] of rooms.entries()) {
-    if (room.gameState.players.some(p => p.id === socketId)) {
-      return roomId;
-    }
-  }
-  return null;
-}
-
-function notifyVoiceParticipants(roomId: string, event: string, data: any, excludeSocketId?: string) {
-  const voiceParticipants = voiceRooms.get(roomId);
-  if (voiceParticipants) {
-    voiceParticipants.forEach(participantId => {
-      if (participantId !== excludeSocketId) {
-        io.to(participantId).emit(event, data);
-      }
-    });
-  }
 }
 
 // Othello game logic (unchanged)
@@ -685,7 +615,7 @@ io.on('connection', (socket) => {
 
   // **FIXED: Player login/authentication with better logging**
   socket.on('loginPlayer', (data: LoginRequest) => {
-    console.log('🔐 Login request received:', { socketId: socket.id, nickname: data.nickname, emoji: data.emoji });
+    console.log('🔍 Login request received:', { socketId: socket.id, nickname: data.nickname, emoji: data.emoji });
     
     try {
       const { nickname, emoji, pieceEmoji } = data;
@@ -763,8 +693,6 @@ io.on('connection', (socket) => {
       } as LoginResponse);
     }
   });
-
- 
 
   // **NEW: Get player data**
   socket.on('getPlayerData', (nickname: string) => {
@@ -1084,67 +1012,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // NEW: Handle surrender game
-  socket.on('surrenderGame', (roomId: string) => {
-    console.log('🏃‍♂️ Surrender request from:', socket.id, 'in room:', roomId);
-    
-    const room = rooms.get(roomId);
-    if (!room) {
-      console.log('❌ Surrender failed: Room not found');
-      socket.emit('error', 'Phòng không tồn tại');
-      return;
-    }
-
-    if (room.gameState.gameStatus !== 'playing') {
-      console.log('❌ Surrender failed: Game not in playing status');
-      socket.emit('error', 'Chỉ có thể đầu hàng khi game đang diễn ra!');
-      return;
-    }
-
-    // Check if the surrendering player is in the game
-    const surrenderingPlayer = room.gameState.players.find(p => p.id === socket.id);
-    if (!surrenderingPlayer) {
-      console.log('❌ Surrender failed: Player not in game');
-      socket.emit('error', 'Bạn không ở trong game này!');
-      return;
-    }
-
-    // Cannot surrender against AI in some cases, but allow for now
-    // const opponentPlayer = room.gameState.players.find(p => p.id !== socket.id);
-    
-    try {
-      // Set game as finished and mark who surrendered
-      room.gameState.gameStatus = 'finished';
-      room.gameState.surrenderedPlayerId = socket.id;
-      
-      // Clear timer
-      if (roomTimers.has(roomId)) {
-        clearInterval(roomTimers.get(roomId)!);
-        roomTimers.delete(roomId);
-      }
-
-      // Determine winner (the other player)
-      const winnerPlayer = room.gameState.players.find(p => p.id !== socket.id);
-      if (winnerPlayer) {
-        room.gameState.winnerId = winnerPlayer.id;
-      }
-
-      updateRoomActivity(roomId);
-      
-      // Award coins (surrendering player loses 10, winner gains 10)
-      awardCoinsToPlayers(room);
-      
-      console.log(`✅ Player ${surrenderingPlayer.displayName} surrendered in room ${roomId}`);
-      
-      // Broadcast the updated game state
-      io.to(roomId).emit('gameStateUpdate', room.gameState);
-      
-    } catch (error) {
-      console.error('💥 Surrender error:', error);
-      socket.emit('error', 'Có lỗi xảy ra khi đầu hàng. Vui lòng thử lại.');
-    }
-  });
-
   socket.on('newGame', (data: { roomId: string; isAI?: boolean; difficulty?: AIDifficulty } | string) => {
     const roomId = typeof data === 'string' ? data : data.roomId;
     const isAI = typeof data === 'object' ? data.isAI : false;
@@ -1405,8 +1272,6 @@ const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Database loaded with ${database.getPlayerCount()} players`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 CORS enabled for: ${process.env.NODE_ENV === 'production' ? 'https://huong-othello.vercel.app' : 'http://localhost:3000'}`);
 });
-
-
