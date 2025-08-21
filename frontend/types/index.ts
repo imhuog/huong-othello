@@ -142,7 +142,7 @@ export const BOARD_THEMES: ThemeColors[] = [
 export interface CoinsAwarded {
   playerId: string;
   amount: number;
-  result: 'win' | 'lose' | 'draw' | 'surrender_win' | 'surrender_lose';
+  result: 'win' | 'lose' | 'draw' | 'surrender'; // NEW: Add surrender result
 }
 
 // Player và Game state interfaces - Updated
@@ -150,14 +150,14 @@ export interface GameState {
   board: (number | null)[][];
   players: Player[];
   currentPlayer: number;
-  gameStatus: 'waiting' | 'playing' | 'finished' | 'surrendered'; // Thêm trạng thái surrendered
+  gameStatus: 'waiting' | 'playing' | 'finished';
   scores: { [key: number]: number };
   validMoves: [number, number][];
   timeLeft: number;
   winnerId?: string;
-  surrenderId?: string; // ID của người đầu hàng
   coinTransactions?: CoinTransaction[]; // Thêm thông tin giao dịch xu
   coinsAwarded?: CoinsAwarded; // Thêm thuộc tính này để fix lỗi
+  surrenderedPlayerId?: string; // NEW: Track who surrendered
 }
 
 export interface Player {
@@ -169,7 +169,6 @@ export interface Player {
   isReady: boolean;
   coins: number; // Luôn có coins
   isAuthenticated: boolean; // Đã đăng nhập với nickname
-  hasSurrendered?: boolean; // Thêm thuộc tính để track đầu hàng
   // Thêm thuộc tính cho quân cờ tùy chỉnh
   pieceEmoji?: {
     black: string;
@@ -183,8 +182,8 @@ export interface PlayerStats {
   gamesWon: number;
   gamesLost: number;
   gamesDraw: number;
+  gamesSurrendered?: number; // NEW: Track surrender count
   winRate: number;
-  surrenders?: number; // Thêm thống kê số lần đầu hàng
 }
 
 export interface CoinTransaction {
@@ -193,7 +192,7 @@ export interface CoinTransaction {
   oldCoins: number;
   newCoins: number;
   coinChange: number;
-  result: 'win' | 'lose' | 'draw' | 'surrender_win' | 'surrender_lose';
+  result: 'win' | 'lose' | 'draw' | 'surrender'; // NEW: Add surrender result
 }
 
 export interface ChatMessage {
@@ -262,7 +261,7 @@ export const AVAILABLE_EMOJIS = [
 export const PIECE_EMOJI_OPTIONS = [
   { name: 'Cổ điển', black: '⚫', white: '⚪' },
   { name: 'Đỏ Xanh', black: '🔴', white: '🔵' },
-  { name: 'Động vật', black: '🯇', white: '🐑' },
+  { name: 'Động vật', black: '🐯', white: '🐄' },
   { name: 'Animal', black: '🐰', white: '🐳' },
   { name: 'Trái cây', black: '🍇', white: '🥥' },
   { name: 'Hoa quả', black: '🍓', white: '🍊' },
@@ -271,7 +270,7 @@ export const PIECE_EMOJI_OPTIONS = [
   { name: 'Hoa', black: '🌺', white: '🌼' },
   { name: 'Thể thao', black: '⚽', white: '🏀' },
   { name: 'Âm nhạc', black: '🎵', white: '🎶' },
-  { name: 'Giàu có', black: '💎', white: '💸' },
+  { name: 'Giá có', black: '💎', white: '💸' },
   { name: 'Thực phẩm', black: '🍫', white: '🥛' },
   { name: 'Giao thông', black: '🚗', white: '🚕' },
   { name: 'Vũ trụ', black: '🌑', white: '🌕' },
@@ -283,36 +282,34 @@ export const PIECE_EMOJI_OPTIONS = [
 ];
 
 // Utility functions
-export const getCoinChangeForResult = (result: 'win' | 'lose' | 'draw' | 'surrender_win' | 'surrender_lose'): number => {
+// NEW: Updated function to handle surrender
+export const getCoinChangeForResult = (result: 'win' | 'lose' | 'draw' | 'surrender'): number => {
   switch (result) {
     case 'win':
-      return 10;
-    case 'surrender_win': // Thắng do đối thủ đầu hàng
       return 10;
     case 'draw':
       return 5;
     case 'lose':
       return -5;
-    case 'surrender_lose': // Thua do đầu hàng
+    case 'surrender': // NEW: Surrender penalty
       return -10;
     default:
       return 0;
   }
 };
 
-export const getResultMessage = (result: 'win' | 'lose' | 'draw' | 'surrender_win' | 'surrender_lose', coinChange: number): string => {
+// NEW: Updated function to handle surrender messages
+export const getResultMessage = (result: 'win' | 'lose' | 'draw' | 'surrender', coinChange: number): string => {
   const changeText = coinChange >= 0 ? `+${coinChange}` : `${coinChange}`;
   switch (result) {
     case 'win':
       return `🏆 Chúc mừng! Bạn thắng và được ${changeText} xu!`;
-    case 'surrender_win':
-      return `🎉 Đối thủ đầu hàng! Bạn thắng và được ${changeText} xu!`;
     case 'draw':
       return `🤝 Hòa! Bạn được ${changeText} xu!`;
     case 'lose':
       return `😔 Bạn thua và bị trừ ${Math.abs(coinChange)} xu`;
-    case 'surrender_lose':
-      return `😞 Bạn đã đầu hàng và bị trừ ${Math.abs(coinChange)} xu`;
+    case 'surrender': // NEW: Surrender message
+      return `🏃‍♂️ Bạn đã đầu hàng và bị trừ ${Math.abs(coinChange)} xu`;
     default:
       return '';
   }
