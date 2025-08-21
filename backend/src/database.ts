@@ -8,7 +8,6 @@ export interface PlayerData {
   gamesWon: number;
   gamesLost: number;
   gamesDraw: number;
-  gamesSurrendered?: number; // NEW: Track surrender count
   lastPlayed: string;
   createdAt: string;
 }
@@ -40,16 +39,6 @@ class Database {
       if (fs.existsSync(this.dbPath)) {
         const fileContent = fs.readFileSync(this.dbPath, 'utf8');
         this.data = JSON.parse(fileContent);
-        
-        // Migrate existing players to add gamesSurrendered if missing
-        Object.values(this.data.players).forEach(player => {
-          if (player.gamesSurrendered === undefined) {
-            player.gamesSurrendered = 0;
-          }
-        });
-        
-        // Save the migrated data
-        this.saveData();
       } else {
         this.data = { players: {} };
         this.saveData();
@@ -93,7 +82,6 @@ class Database {
       gamesWon: 0,
       gamesLost: 0,
       gamesDraw: 0,
-      gamesSurrendered: 0, // NEW: Initialize surrender count
       lastPlayed: new Date().toISOString(),
       createdAt: new Date().toISOString()
     };
@@ -106,7 +94,7 @@ class Database {
   }
 
   // Cập nhật xu cho player
-  updatePlayerCoins(nickname: string, coinChange: number, gameResult: 'win' | 'lose' | 'draw' | 'surrender'): PlayerData {
+  updatePlayerCoins(nickname: string, coinChange: number, gameResult: 'win' | 'lose' | 'draw'): PlayerData {
     const normalizedNickname = nickname.toLowerCase().trim();
     const player = this.getOrCreatePlayer(nickname);
     
@@ -124,11 +112,6 @@ class Database {
         break;
       case 'draw':
         player.gamesDraw++;
-        break;
-      case 'surrender': // NEW: Handle surrender result
-        player.gamesSurrendered = (player.gamesSurrendered || 0) + 1;
-        // Surrender is counted as a loss in terms of game statistics
-        player.gamesLost++;
         break;
     }
     
