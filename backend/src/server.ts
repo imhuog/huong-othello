@@ -685,7 +685,7 @@ io.on('connection', (socket) => {
 
   // **FIXED: Player login/authentication with better logging**
   socket.on('loginPlayer', (data: LoginRequest) => {
-    console.log('🔍 Login request received:', { socketId: socket.id, nickname: data.nickname, emoji: data.emoji });
+    console.log('🔐 Login request received:', { socketId: socket.id, nickname: data.nickname, emoji: data.emoji });
     
     try {
       const { nickname, emoji, pieceEmoji } = data;
@@ -763,6 +763,25 @@ io.on('connection', (socket) => {
       } as LoginResponse);
     }
   });
+
+  // **NEW: Get player data**
+  socket.on('getPlayerData', (nickname: string) => {
+    try {
+      const playerData = database.getPlayer(nickname.trim());
+      if (playerData) {
+        socket.emit('playerDataResponse', {
+          success: true,
+          player: playerData
+        });
+      } else {        
+        socket.emit('playerDataResponse', {
+          success: false,
+          message: 'Không tìm thấy người chơi'
+        });
+      }
+    } catch (error) {
+      console.error('Get player data error:', error);
+      socket.emit('
 
   // **NEW: Get player data**
   socket.on('getPlayerData', (nickname: string) => {
@@ -1406,3 +1425,4 @@ server.listen(PORT, () => {
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 CORS enabled for: ${process.env.NODE_ENV === 'production' ? 'https://huong-othello.vercel.app' : 'http://localhost:3000'}`);
 });
+
