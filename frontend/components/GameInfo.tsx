@@ -6,7 +6,7 @@ import { getResultMessage } from '../types';
 import ThemeSelector from './ThemeSelector';
 
 const GameInfo: React.FC = () => {
-  const { gameState, roomId, newGame, startGame, isAIGame, aiDifficulty, surrenderGame } = useGame();
+  const { gameState, roomId, newGame, startGame, isAIGame, aiDifficulty, surrenderGame, leaveRoom } = useGame();
   const { currentPlayer } = useSocket();
   const [showCoinTransactions, setShowCoinTransactions] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
@@ -25,6 +25,14 @@ const GameInfo: React.FC = () => {
     !gameState.players.every(p => p.isReady);
 
   const canSurrender = gameState.gameStatus === 'playing' && currentPlayerInGame;
+
+  // Navigate to home
+  const goToHome = () => {
+    if (leaveRoom) {
+      leaveRoom();
+    }
+    window.location.href = '/';
+  };
 
   // Copy room link function
   const copyRoomLink = async () => {
@@ -187,13 +195,37 @@ const GameInfo: React.FC = () => {
             )}
 
             {gameState.gameStatus === 'finished' && (
+              <>
+                <motion.button
+                  onClick={newGame}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold transition-colors shadow-lg"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  🆕 Ván mới
+                </motion.button>
+                
+                <motion.button
+                  onClick={goToHome}
+                  className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg font-semibold transition-colors shadow-lg border border-gray-400/30"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  🏠 Về trang chủ
+                </motion.button>
+              </>
+            )}
+
+            {/* Leave Room Button - Show anytime except when game is playing */}
+            {gameState.gameStatus !== 'playing' && (
               <motion.button
-                onClick={newGame}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold transition-colors shadow-lg"
+                onClick={goToHome}
+                className="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-lg font-semibold transition-colors shadow-lg border border-orange-400/30"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
+                title="Rời phòng và về trang chủ"
               >
-                🆕 Ván mới
+                🚪 Rời phòng
               </motion.button>
             )}
           </div>
