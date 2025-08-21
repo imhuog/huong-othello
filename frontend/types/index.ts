@@ -138,26 +138,29 @@ export const BOARD_THEMES: ThemeColors[] = [
   }
 ];
 
-// Thêm interface cho coinsAwarded
+// Định nghĩa type cho game result - FIXED: Thêm 'surrender_win'
+export type GameResult = 'win' | 'lose' | 'draw' | 'surrender' | 'surrender_win';
+
+// Thêm interface cho coinsAwarded - FIXED: Sử dụng GameResult type
 export interface CoinsAwarded {
   playerId: string;
   amount: number;
-  result: 'win' | 'lose' | 'draw' | 'surrender' | 'surrender_win'; // Thêm 'surrender_win'
+  result: GameResult;
 }
 
-// Player và Game state interfaces - Updated
+// Player và Game state interfaces - Updated - FIXED: Thêm 'surrendered' vào gameStatus
 export interface GameState {
   board: (number | null)[][];
   players: Player[];
   currentPlayer: number;
-  gameStatus: 'waiting' | 'playing' | 'finished' | 'surrendered'; // Thêm 'surrendered'
+  gameStatus: 'waiting' | 'playing' | 'finished' | 'surrendered'; // FIXED: Thêm 'surrendered'
   scores: { [key: number]: number };
   validMoves: [number, number][];
   timeLeft: number;
   winnerId?: string;
-  coinTransactions?: CoinTransaction[];
-  coinsAwarded?: CoinsAwarded;
-  surrenderedPlayerId?: string;
+  coinTransactions?: CoinTransaction[]; // Thêm thông tin giao dịch xu
+  coinsAwarded?: CoinsAwarded; // Thêm thuộc tính này để fix lỗi
+  surrenderedPlayerId?: string; // Track who surrendered
 }
 
 export interface Player {
@@ -182,18 +185,20 @@ export interface PlayerStats {
   gamesWon: number;
   gamesLost: number;
   gamesDraw: number;
-  gamesSurrendered?: number; // NEW: Track surrender count
+  gamesSurrendered?: number; // Track surrender count
   winRate: number;
 }
 
+// FIXED: Sử dụng GameResult type
 export interface CoinTransaction {
   playerId: string;
   nickname: string;
   oldCoins: number;
   newCoins: number;
   coinChange: number;
-  result: 'win' | 'lose' | 'draw' | 'surrender' | 'surrender_win'; // Thêm 'surrender_win'
+  result: GameResult; // FIXED: Sử dụng GameResult type
 }
+
 export interface ChatMessage {
   id: string;
   playerId: string;
@@ -260,16 +265,16 @@ export const AVAILABLE_EMOJIS = [
 export const PIECE_EMOJI_OPTIONS = [
   { name: 'Cổ điển', black: '⚫', white: '⚪' },
   { name: 'Đỏ Xanh', black: '🔴', white: '🔵' },
-  { name: 'Động vật', black: '🐯', white: '🐄' },
-  { name: 'Animal', black: '🐰', white: '🐳' },
+  { name: 'Động vật', black: '🯐', white: '🄯' },
+  { name: 'Animal', black: '🰱', white: '🳳' },
   { name: 'Trái cây', black: '🍇', white: '🥥' },
   { name: 'Hoa quả', black: '🍓', white: '🍊' },
   { name: 'Caro', black: '❌', white: '⭕' },
-  { name: 'Tan vỡ', black: '💔', white: '🙅' },
+  { name: 'Tan vỡ', black: '🔥', white: '🙅' },
   { name: 'Hoa', black: '🌺', white: '🌼' },
   { name: 'Thể thao', black: '⚽', white: '🏀' },
   { name: 'Âm nhạc', black: '🎵', white: '🎶' },
-  { name: 'Giá có', black: '💎', white: '💸' },
+  { name: 'Giá cứ', black: '💎', white: '💸' },
   { name: 'Thực phẩm', black: '🍫', white: '🥛' },
   { name: 'Giao thông', black: '🚗', white: '🚕' },
   { name: 'Vũ trụ', black: '🌑', white: '🌕' },
@@ -281,30 +286,30 @@ export const PIECE_EMOJI_OPTIONS = [
 ];
 
 // Utility functions
-// NEW: Updated function to handle surrender
-export const getCoinChangeForResult = (result: 'win' | 'lose' | 'draw' | 'surrender'): number => {
+// FIXED: Updated function to handle all game results including 'surrender_win'
+export const getCoinChangeForResult = (result: GameResult): number => {
   switch (result) {
     case 'win':
+    case 'surrender_win': // FIXED: Handle surrender_win case
       return 10;
     case 'draw':
       return 5;
     case 'lose':
       return -5;
-    case 'surrender': // NEW: Surrender penalty
+    case 'surrender':
       return -10;
     default:
       return 0;
   }
 };
 
-// NEW: Updated function to handle surrender messages
-// Cập nhật type parameter
-export const getResultMessage = (result: 'win' | 'lose' | 'draw' | 'surrender' | 'surrender_win', coinChange: number): string => {
+// FIXED: Updated function to handle all game results including 'surrender_win'
+export const getResultMessage = (result: GameResult, coinChange: number): string => {
   const changeText = coinChange >= 0 ? `+${coinChange}` : `${coinChange}`;
   switch (result) {
     case 'win':
       return `🏆 Chúc mừng! Bạn thắng và được ${changeText} xu!`;
-    case 'surrender_win': // Thêm case mới
+    case 'surrender_win': // FIXED: Handle surrender_win case
       return `🏆 Chúc mừng! Đối thủ đầu hàng, bạn thắng và được ${changeText} xu!`;
     case 'draw':
       return `🤝 Hòa! Bạn được ${changeText} xu!`;
