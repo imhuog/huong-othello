@@ -8,6 +8,7 @@ export interface PlayerData {
   gamesWon: number;
   gamesLost: number;
   gamesDraw: number;
+  gamesSurrendered?: number; // NEW: Track surrender count
   lastPlayed: string;
   createdAt: string;
 }
@@ -39,6 +40,16 @@ class Database {
       if (fs.existsSync(this.dbPath)) {
         const fileContent = fs.readFileSync(this.dbPath, 'utf8');
         this.data = JSON.parse(fileContent);
+        
+        // Migrate existing players to add gamesSurrendered if missing
+        Object.values(this.data.players).forEach(player => {
+          if (player.gamesSurrendered === undefined) {
+            player.gamesSurrendered = 0;
+          }
+        });
+        
+        // Save the migrated data
+        this.saveData();
       } else {
         this.data = { players: {} };
         this.saveData();
@@ -82,6 +93,7 @@ class Database {
       gamesWon: 0,
       gamesLost: 0,
       gamesDraw: 0,
+      gamesSurrendered: 0, // NEW: Initialize surrender count
       lastPlayed: new Date().toISOString(),
       createdAt: new Date().toISOString()
     };
@@ -108,11 +120,15 @@ class Database {
         player.gamesWon++;
         break;
       case 'lose':
-      case 'surrender': // Đầu hàng được tính là thua
         player.gamesLost++;
         break;
       case 'draw':
         player.gamesDraw++;
+        break;
+      case 'surrender': // NEW: Handle surrender result
+        player.gamesSurrendered = (player.gamesSurrendered || 0) + 1;
+        // Surrender is counted as a loss in terms of game statistics
+        player.gamesLost++;
         break;
     }
     
@@ -124,19 +140,6 @@ class Database {
     console.log(`Updated player ${nickname}: coins=${player.coins} (${coinChange >= 0 ? '+' : ''}${coinChange}), result=${gameResult}`);
     
     return player;
-  }
-
-  // Xử lý đầu hàng - trừ xu người đầu hàng, cộng xu đối thủ
-  handleSurrender(surrenderPlayerNickname: string, opponentNickname: string): { surrenderPlayer: PlayerData; opponentPlayer: PlayerData } {
-    const surrenderPlayer = this.updatePlayerCoins(surrenderPlayerNickname, -10, 'surrender');
-    const opponentPlayer = this.updatePlayerCoins(opponentNickname, 10, 'win');
-    
-    console.log(`Surrender handled: ${surrenderPlayerNickname} lost 10 coins, ${opponentNickname} gained 10 coins`);
-    
-    return {
-      surrenderPlayer,
-      opponentPlayer
-    };
   }
 
   // Lấy top players by coins
