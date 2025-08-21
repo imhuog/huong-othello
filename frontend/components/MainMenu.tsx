@@ -150,25 +150,18 @@ const MainMenu: React.FC = () => {
     }
   };
 
-  // FIXED: Proper room link generation based on current URL structure
+  // FIXED: Proper room link generation using query parameters
   const getRoomLink = (roomIdToUse: string) => {
-    // Get current page URL and replace with room parameter
-    const currentUrl = new URL(window.location.href);
+    // Create link using query parameter instead of path parameter
+    const baseUrl = window.location.origin;
     
-    // Check if we're already on a game page or if there's a specific game route
-    if (currentUrl.pathname.includes('/game')) {
-      // If already on game page, just update the room parameter
-      currentUrl.searchParams.set('room', roomIdToUse);
-      return currentUrl.toString();
-    } else {
-      // If on main menu/home page, add room parameter to current page
-      // This assumes the same page handles both menu and game with URL params
-      currentUrl.searchParams.set('room', roomIdToUse);
-      return currentUrl.toString();
-    }
+    // Use query parameter format: ?room=ROOMID
+    const roomLink = `${baseUrl}/?room=${roomIdToUse}`;
+    
+    return roomLink;
   };
 
-  // FIXED: Copy room link function with proper URL format
+  // FIXED: Copy room link function with proper query parameter format
   const copyRoomLink = async () => {
     const roomIdToUse = roomId || currentRoomId;
     if (!roomIdToUse) {
@@ -180,6 +173,8 @@ const MainMenu: React.FC = () => {
     const roomLink = getRoomLink(roomIdToUse);
     
     console.log('📋 Copying room link:', roomLink);
+    console.log('🔍 Room ID:', roomIdToUse);
+    console.log('🌐 Base URL:', window.location.origin);
     
     try {
       await navigator.clipboard.writeText(roomLink);
@@ -246,6 +241,8 @@ const MainMenu: React.FC = () => {
     
     const roomLink = getRoomLink(roomIdToUse);
     
+    console.log('📤 Sharing room link:', roomLink);
+    
     if (navigator.share) {
       try {
         await navigator.share({
@@ -253,6 +250,7 @@ const MainMenu: React.FC = () => {
           text: `Tham gia phòng Othello của tôi! Mã phòng: ${roomIdToUse}`,
           url: roomLink,
         });
+        console.log('✅ Room link shared successfully');
       } catch (err) {
         console.log('Share cancelled or failed, fallback to copy');
         copyRoomLink();
