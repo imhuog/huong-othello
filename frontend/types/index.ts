@@ -298,16 +298,19 @@ export const getCoinChangeForResult = (result: 'win' | 'lose' | 'draw' | 'surren
 };
 
 // NEW: Updated function to handle surrender messages
-export const getResultMessage = (result: 'win' | 'lose' | 'draw' | 'surrender', coinChange: number): string => {
+// Cập nhật type parameter
+export const getResultMessage = (result: 'win' | 'lose' | 'draw' | 'surrender' | 'surrender_win', coinChange: number): string => {
   const changeText = coinChange >= 0 ? `+${coinChange}` : `${coinChange}`;
   switch (result) {
     case 'win':
       return `🏆 Chúc mừng! Bạn thắng và được ${changeText} xu!`;
+    case 'surrender_win': // Thêm case mới
+      return `🏆 Chúc mừng! Đối thủ đầu hàng, bạn thắng và được ${changeText} xu!`;
     case 'draw':
       return `🤝 Hòa! Bạn được ${changeText} xu!`;
     case 'lose':
       return `😔 Bạn thua và bị trừ ${Math.abs(coinChange)} xu`;
-    case 'surrender': // NEW: Surrender message
+    case 'surrender':
       return `🏃‍♂️ Bạn đã đầu hàng và bị trừ ${Math.abs(coinChange)} xu`;
     default:
       return '';
