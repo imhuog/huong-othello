@@ -9,7 +9,7 @@ import ThemeSelector from './ThemeSelector';
 import PlayerProfile from './PlayerProfile';
 
 const MainMenu: React.FC = () => {
-  const { createRoom, joinRoom, createAIGame, roomId, gameState } = useGame(); // FIXED: Get both roomId and gameState
+  const { createRoom, joinRoom, createAIGame, roomId, gameState } = useGame();
   const { currentPlayer, logoutPlayer } = useSocket();
   const [activeTab, setActiveTab] = useState<'create' | 'join' | 'ai'>('create');
   const [joinRoomId, setJoinRoomId] = useState('');
@@ -20,7 +20,7 @@ const MainMenu: React.FC = () => {
   // FIXED: Better room sharing state management
   const [showRoomShare, setShowRoomShare] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
-  const [currentRoomId, setCurrentRoomId] = useState<string | null>(null); // FIXED: Local state to track room creation
+  const [currentRoomId, setCurrentRoomId] = useState<string | null>(null);
 
   // DEBUG: Add console logs
   console.log('🔍 MainMenu Debug:', {
@@ -29,7 +29,8 @@ const MainMenu: React.FC = () => {
     roomIdLength: roomId?.length,
     gameState: gameState?.gameStatus,
     showRoomShare: showRoomShare,
-    currentRoomId: currentRoomId
+    currentRoomId: currentRoomId,
+    currentUrl: window.location.href
   });
 
   // Auto-fill room ID from URL
@@ -149,6 +150,24 @@ const MainMenu: React.FC = () => {
     }
   };
 
+  // FIXED: Proper room link generation based on current URL structure
+  const getRoomLink = (roomIdToUse: string) => {
+    // Get current page URL and replace with room parameter
+    const currentUrl = new URL(window.location.href);
+    
+    // Check if we're already on a game page or if there's a specific game route
+    if (currentUrl.pathname.includes('/game')) {
+      // If already on game page, just update the room parameter
+      currentUrl.searchParams.set('room', roomIdToUse);
+      return currentUrl.toString();
+    } else {
+      // If on main menu/home page, add room parameter to current page
+      // This assumes the same page handles both menu and game with URL params
+      currentUrl.searchParams.set('room', roomIdToUse);
+      return currentUrl.toString();
+    }
+  };
+
   // FIXED: Copy room link function with proper URL format
   const copyRoomLink = async () => {
     const roomIdToUse = roomId || currentRoomId;
@@ -157,8 +176,8 @@ const MainMenu: React.FC = () => {
       return;
     }
     
-    // FIXED: Proper URL format pointing to /game page
-    const roomLink = `${window.location.origin}/game?room=${roomIdToUse}`;
+    // FIXED: Use the new getRoomLink function
+    const roomLink = getRoomLink(roomIdToUse);
     
     console.log('📋 Copying room link:', roomLink);
     
@@ -225,7 +244,7 @@ const MainMenu: React.FC = () => {
     const roomIdToUse = roomId || currentRoomId;
     if (!roomIdToUse) return;
     
-    const roomLink = `${window.location.origin}/game?room=${roomIdToUse}`;
+    const roomLink = getRoomLink(roomIdToUse);
     
     if (navigator.share) {
       try {
@@ -247,13 +266,6 @@ const MainMenu: React.FC = () => {
   const closeRoomShare = () => {
     setShowRoomShare(false);
     setCopySuccess(false);
-  };
-
-  // TEST BUTTON: For debugging (remove in production)
-  const showTestModal = () => {
-    console.log('🧪 Test modal triggered');
-    setCurrentRoomId('TEST123');
-    setShowRoomShare(true);
   };
 
   if (!currentPlayer) {
@@ -325,7 +337,7 @@ const MainMenu: React.FC = () => {
                       </motion.button>
                     </div>
                     <p className="text-xs text-gray-400 mt-3 break-all">
-                      Link: {window.location.origin}/game?room={displayRoomId}
+                      Link: {getRoomLink(displayRoomId)}
                     </p>
                   </div>
                   
@@ -337,7 +349,7 @@ const MainMenu: React.FC = () => {
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                     >
-                      <span className="text-xl">🔤</span>
+                      <span className="text-xl">📤</span>
                       <span>Chia sẻ link phòng</span>
                     </motion.button>
                     
@@ -367,26 +379,13 @@ const MainMenu: React.FC = () => {
 
                   {/* Additional info */}
                   <div className="mt-6 text-xs text-gray-400 bg-white/10 rounded-lg p-3">
-                    💡 Tip: Bạn bè có thể tham gia bằng cách nhấp vào link hoặc nhập mã phòng trong tab "Vào phòng"
+                    💡 Tip: Bạn bè có thể tham gia bằng cách nhấn vào link hoặc nhập mã phòng trong tab "Vào phòng"
                   </div>
                 </div>
               </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
-
-        {/* DEBUG BUTTON - Remove in production */}
-        <div className="mb-4 text-center">
-          <button 
-            onClick={showTestModal}
-            className="bg-red-500 text-white px-4 py-2 rounded mb-2"
-          >
-            🧪 Test Modal
-          </button>
-          <div className="text-white text-xs">
-            Debug: roomId={roomId}, currentRoomId={currentRoomId}, showModal={showRoomShare.toString()}
-          </div>
-        </div>
 
         {/* Mobile Layout */}
         <div className="lg:hidden space-y-6">
