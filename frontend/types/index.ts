@@ -142,7 +142,7 @@ export const BOARD_THEMES: ThemeColors[] = [
 export interface CoinsAwarded {
   playerId: string;
   amount: number;
-  result: 'win' | 'lose' | 'draw' | 'surrender'; // NEW: Add surrender result
+  result: 'win' | 'lose' | 'draw' | 'surrender' | 'surrender_win'; // Thêm 'surrender_win'
 }
 
 // Player và Game state interfaces - Updated
@@ -192,9 +192,8 @@ export interface CoinTransaction {
   oldCoins: number;
   newCoins: number;
   coinChange: number;
-  result: 'win' | 'lose' | 'draw' | 'surrender'; // NEW: Add surrender result
+  result: 'win' | 'lose' | 'draw' | 'surrender' | 'surrender_win'; // Thêm 'surrender_win'
 }
-
 export interface ChatMessage {
   id: string;
   playerId: string;
