@@ -1,51 +1,55 @@
+import React from 'react';
 import type { AppProps } from 'next/app';
+import Head from 'next/head';
 import { Toaster } from 'react-hot-toast';
 import { SocketProvider } from '../contexts/SocketContext';
 import { GameProvider } from '../contexts/GameContext';
-import { VoiceProvider } from '../contexts/VoiceContext'; // NEW: Import VoiceProvider
 import '../styles/globals.css';
 
-export default function App({ Component, pageProps }: AppProps) {
+function MyApp({ Component, pageProps }: AppProps) {
   return (
-    <SocketProvider>
-      <GameProvider>
-        <VoiceProvider> {/* NEW: Wrap with VoiceProvider */}
-          <Component {...pageProps} />
+    <>
+      <Head>
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#4F46E5" />
+        <link rel="icon" href="/icons/icon-192x192.png" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+      </Head>
+      <SocketProvider>
+        <GameProvider>
+          {/* Nền tổng thể của ứng dụng sẽ là một gradient tối cố định */}
+          <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 text-white">
+            <Component {...pageProps} />
+          </div>
           <Toaster
             position="top-center"
             toastOptions={{
               duration: 3000,
               style: {
-                background: '#1f2937',
-                color: '#f3f4f6',
-                border: '1px solid #374151',
-                borderRadius: '0.75rem',
-                fontSize: '0.875rem',
-                fontWeight: '500',
-                boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                background: 'rgba(0, 0, 0, 0.8)',
+                color: 'white',
+                backdropFilter: 'blur(10px)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '12px',
               },
               success: {
                 iconTheme: {
-                  primary: '#10b981',
-                  secondary: '#ffffff',
-                },
-                style: {
-                  border: '1px solid #10b981',
+                  primary: '#10B981',
+                  secondary: 'white',
                 },
               },
               error: {
                 iconTheme: {
-                  primary: '#ef4444',
-                  secondary: '#ffffff',
-                },
-                style: {
-                  border: '1px solid #ef4444',
+                  primary: '#EF4444',
+                  secondary: 'white',
                 },
               },
             }}
           />
-        </VoiceProvider>
-      </GameProvider>
-    </SocketProvider>
+        </GameProvider>
+      </SocketProvider>
+    </>
   );
 }
+
+export default MyApp;
