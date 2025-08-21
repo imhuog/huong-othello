@@ -1,3 +1,5 @@
+// FIXED: Complete MainMenu.tsx with proper roomId handling
+
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGame } from '../contexts/GameContext';
@@ -7,17 +9,28 @@ import ThemeSelector from './ThemeSelector';
 import PlayerProfile from './PlayerProfile';
 
 const MainMenu: React.FC = () => {
-  const { createRoom, joinRoom, createAIGame, roomId } = useGame(); // FIXED: Get roomId from useGame
+  const { createRoom, joinRoom, createAIGame, roomId, gameState } = useGame(); // FIXED: Get both roomId and gameState
   const { currentPlayer, logoutPlayer } = useSocket();
   const [activeTab, setActiveTab] = useState<'create' | 'join' | 'ai'>('create');
-  const [joinRoomId, setJoinRoomId] = useState(''); // FIXED: Rename to avoid confusion with roomId from useGame
+  const [joinRoomId, setJoinRoomId] = useState('');
   const [selectedDifficulty, setSelectedDifficulty] = useState<AIDifficulty>('medium');
   const [selectedPieceStyle, setSelectedPieceStyle] = useState(PIECE_EMOJI_OPTIONS[0]);
   const [showPieceSelector, setShowPieceSelector] = useState(false);
   
-  // Room sharing state - FIXED: Better state management
+  // FIXED: Better room sharing state management
   const [showRoomShare, setShowRoomShare] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [currentRoomId, setCurrentRoomId] = useState<string | null>(null); // FIXED: Local state to track room creation
+
+  // DEBUG: Add console logs
+  console.log('🔍 MainMenu Debug:', {
+    roomId: roomId,
+    roomIdType: typeof roomId,
+    roomIdLength: roomId?.length,
+    gameState: gameState?.gameStatus,
+    showRoomShare: showRoomShare,
+    currentRoomId: currentRoomId
+  });
 
   // Auto-fill room ID from URL
   useEffect(() => {
@@ -42,16 +55,39 @@ const MainMenu: React.FC = () => {
     }
   }, [currentPlayer]);
 
-  // FIXED: Listen for room creation - show modal when room is created
+  // FIXED: Enhanced room creation detection
   useEffect(() => {
-    if (roomId && roomId.length === 6) { // Valid room ID format
+    console.log('🎯 roomId effect triggered:', roomId);
+    
+    if (roomId && roomId !== currentRoomId) {
+      // New room created
+      console.log('✅ New room detected:', roomId);
+      setCurrentRoomId(roomId);
       setShowRoomShare(true);
       setCopySuccess(false);
     }
-  }, [roomId]);
+  }, [roomId, currentRoomId]);
+
+  // FIXED: Also listen for gameState changes to detect room creation
+  useEffect(() => {
+    console.log('🎮 gameState effect triggered:', gameState?.gameStatus);
+    
+    if (gameState && gameState.gameStatus === 'waiting' && gameState.players.length === 1) {
+      // Room just created and we're waiting for players
+      const playerId = gameState.players[0]?.id;
+      if (playerId === currentPlayer?.id && roomId && roomId !== currentRoomId) {
+        console.log('✅ Room creation confirmed via gameState');
+        setCurrentRoomId(roomId);
+        setShowRoomShare(true);
+        setCopySuccess(false);
+      }
+    }
+  }, [gameState, roomId, currentRoomId, currentPlayer]);
 
   const handleCreateRoom = (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('🚀 handleCreateRoom called');
+    
     if (currentPlayer) {
       const playerData = {
         name: currentPlayer.displayName,
@@ -61,7 +97,25 @@ const MainMenu: React.FC = () => {
           white: selectedPieceStyle.white
         } : undefined
       };
+      
+      console.log('📤 Calling createRoom with:', playerData);
+      
+      // Reset current room state before creating new one
+      setCurrentRoomId(null);
+      setShowRoomShare(false);
+      setCopySuccess(false);
+      
       createRoom(playerData);
+      
+      // BACKUP: Force show modal after delay if roomId doesn't update
+      setTimeout(() => {
+        console.log('⏰ Backup check - roomId:', roomId);
+        if (roomId && !showRoomShare) {
+          console.log('🆘 Backup: Forcing modal show');
+          setCurrentRoomId(roomId);
+          setShowRoomShare(true);
+        }
+      }, 2000);
     }
   };
 
@@ -95,16 +149,26 @@ const MainMenu: React.FC = () => {
     }
   };
 
-  // FIXED: Better copy room link function
+  // FIXED: Copy room link function with proper URL format
   const copyRoomLink = async () => {
-    if (!roomId) return;
+    const roomIdToUse = roomId || currentRoomId;
+    if (!roomIdToUse) {
+      console.log('❌ No room ID available for copy');
+      return;
+    }
     
-    const roomLink = `${window.location.origin}?room=${roomId}`;
+    // FIXED: Proper URL format pointing to /game page
+    const roomLink = `${window.location.origin}/game?room=${roomIdToUse}`;
+    
+    console.log('📋 Copying room link:', roomLink);
+    
     try {
       await navigator.clipboard.writeText(roomLink);
       setCopySuccess(true);
       setTimeout(() => setCopySuccess(false), 2000);
+      console.log('✅ Room link copied successfully');
     } catch (err) {
+      console.log('⚠️ Clipboard API failed, using fallback');
       // Fallback for older browsers
       const textArea = document.createElement('textarea');
       textArea.value = roomLink;
@@ -118,58 +182,99 @@ const MainMenu: React.FC = () => {
         document.execCommand('copy');
         setCopySuccess(true);
         setTimeout(() => setCopySuccess(false), 2000);
+        console.log('✅ Room link copied via fallback');
       } catch (err2) {
-        console.error('Failed to copy: ', err2);
+        console.error('❌ Failed to copy:', err2);
       }
       document.body.removeChild(textArea);
     }
   };
 
-  // FIXED: Better share room link function
-  const shareRoomLink = async () => {
-    if (!roomId) return;
+  // FIXED: Copy room ID function
+  const copyRoomId = async () => {
+    const roomIdToUse = roomId || currentRoomId;
+    if (!roomIdToUse) return;
     
-    const roomLink = `${window.location.origin}?room=${roomId}`;
+    try {
+      await navigator.clipboard.writeText(roomIdToUse);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch (err) {
+      // Fallback
+      const textArea = document.createElement('textarea');
+      textArea.value = roomIdToUse;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      textArea.style.top = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        setCopySuccess(true);
+        setTimeout(() => setCopySuccess(false), 2000);
+      } catch (err2) {
+        console.error('Failed to copy room ID:', err2);
+      }
+      document.body.removeChild(textArea);
+    }
+  };
+
+  // FIXED: Share room link function
+  const shareRoomLink = async () => {
+    const roomIdToUse = roomId || currentRoomId;
+    if (!roomIdToUse) return;
+    
+    const roomLink = `${window.location.origin}/game?room=${roomIdToUse}`;
+    
     if (navigator.share) {
       try {
         await navigator.share({
           title: 'Othello Game - Tham gia phòng chơi',
-          text: `Tham gia phòng Othello của tôi! Mã phòng: ${roomId}`,
+          text: `Tham gia phòng Othello của tôi! Mã phòng: ${roomIdToUse}`,
           url: roomLink,
         });
       } catch (err) {
-        // If share fails, fallback to copy
+        console.log('Share cancelled or failed, fallback to copy');
         copyRoomLink();
       }
     } else {
-      // If share API not supported, fallback to copy
       copyRoomLink();
     }
   };
 
-  // FIXED: Close room share modal function
+  // FIXED: Close room share modal
   const closeRoomShare = () => {
     setShowRoomShare(false);
     setCopySuccess(false);
   };
 
+  // TEST BUTTON: For debugging (remove in production)
+  const showTestModal = () => {
+    console.log('🧪 Test modal triggered');
+    setCurrentRoomId('TEST123');
+    setShowRoomShare(true);
+  };
+
   if (!currentPlayer) {
-    return null; // This shouldn't happen if properly authenticated
+    return null;
   }
+
+  const displayRoomId = roomId || currentRoomId;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center p-4">
       <div className="w-full max-w-4xl">
         
-        {/* FIXED: Room Share Modal with better styling and functionality */}
+        {/* FIXED: Room Share Modal - Shows when room is created */}
         <AnimatePresence>
-          {showRoomShare && roomId && (
+          {showRoomShare && displayRoomId && (
             <motion.div
               className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={closeRoomShare} // Click backdrop to close
+              onClick={closeRoomShare}
             >
               <motion.div
                 className="bg-white/15 backdrop-blur-md rounded-3xl p-8 shadow-2xl border border-white/30 max-w-md w-full"
@@ -181,7 +286,7 @@ const MainMenu: React.FC = () => {
                   stiffness: 200, 
                   damping: 15 
                 }}
-                onClick={(e) => e.stopPropagation()} // Prevent closing when clicking modal content
+                onClick={(e) => e.stopPropagation()}
               >
                 <div className="text-center text-white">
                   <motion.div
@@ -202,18 +307,29 @@ const MainMenu: React.FC = () => {
                   <h2 className="text-2xl sm:text-3xl font-bold mb-3">Phòng đã tạo thành công!</h2>
                   <p className="text-gray-300 mb-6">Mời bạn bè tham gia bằng cách chia sẻ link hoặc mã phòng</p>
                   
-                  {/* Room ID Display - Enhanced */}
+                  {/* Room ID Display with Copy Button */}
                   <div className="bg-black/40 rounded-xl p-6 mb-6 border border-white/20">
                     <p className="text-sm text-gray-400 mb-2">Mã phòng:</p>
-                    <p className="text-4xl font-bold font-mono text-yellow-400 tracking-wider">
-                      {roomId}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-2">
-                      Link: {window.location.origin}?room={roomId}
+                    <div className="flex items-center justify-center space-x-3">
+                      <p className="text-4xl font-bold font-mono text-yellow-400 tracking-wider">
+                        {displayRoomId}
+                      </p>
+                      <motion.button
+                        onClick={copyRoomId}
+                        className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors"
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        title="Sao chép mã phòng"
+                      >
+                        <span className="text-xl">📋</span>
+                      </motion.button>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-3 break-all">
+                      Link: {window.location.origin}/game?room={displayRoomId}
                     </p>
                   </div>
                   
-                  {/* Action Buttons - Enhanced */}
+                  {/* Action Buttons */}
                   <div className="space-y-3">
                     <motion.button
                       onClick={shareRoomLink}
@@ -221,7 +337,7 @@ const MainMenu: React.FC = () => {
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                     >
-                      <span className="text-xl">📤</span>
+                      <span className="text-xl">🔤</span>
                       <span>Chia sẻ link phòng</span>
                     </motion.button>
                     
@@ -259,12 +375,23 @@ const MainMenu: React.FC = () => {
           )}
         </AnimatePresence>
 
-        {/* Mobile Layout - Stack vertically */}
+        {/* DEBUG BUTTON - Remove in production */}
+        <div className="mb-4 text-center">
+          <button 
+            onClick={showTestModal}
+            className="bg-red-500 text-white px-4 py-2 rounded mb-2"
+          >
+            🧪 Test Modal
+          </button>
+          <div className="text-white text-xs">
+            Debug: roomId={roomId}, currentRoomId={currentRoomId}, showModal={showRoomShare.toString()}
+          </div>
+        </div>
+
+        {/* Mobile Layout */}
         <div className="lg:hidden space-y-6">
-          {/* Player Profile on Mobile - Collapsible */}
           <PlayerProfile player={currentPlayer} onLogout={logoutPlayer} />
           
-          {/* Main Menu */}
           <motion.div
             className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 shadow-2xl border border-white/20"
             initial={{ opacity: 0, y: 50, scale: 0.9 }}
@@ -282,7 +409,6 @@ const MainMenu: React.FC = () => {
               <h1 className="text-2xl font-bold text-white mb-2">Othello Game</h1>
               <p className="text-gray-300 text-sm">Chào mừng {currentPlayer.displayName}!</p>
               
-              {/* Theme selector */}
               <div className="flex justify-center mt-4">
                 <ThemeSelector />
               </div>
