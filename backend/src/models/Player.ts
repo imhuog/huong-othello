@@ -47,7 +47,7 @@ export interface CoinTransaction {
   oldCoins: number;
   newCoins: number;
   coinChange: number;
-  reason: 'win' | 'lose' | 'draw' | 'surrender'; // Thêm 'surrender'
+  reason: 'win' | 'lose' | 'draw';
   timestamp: string;
 }
 
@@ -57,7 +57,7 @@ export const calculateWinRate = (stats: { gamesWon: number; gamesPlayed: number 
   return Math.round((stats.gamesWon / stats.gamesPlayed) * 100);
 };
 
-export const getCoinChangeForResult = (result: 'win' | 'lose' | 'draw' | 'surrender'): number => {
+export const getCoinChangeForResult = (result: 'win' | 'lose' | 'draw'): number => {
   switch (result) {
     case 'win':
       return 10;
@@ -65,14 +65,12 @@ export const getCoinChangeForResult = (result: 'win' | 'lose' | 'draw' | 'surren
       return 5;
     case 'lose':
       return -5;
-    case 'surrender': // Thêm trường hợp đầu hàng
-      return -10;
     default:
       return 0;
   }
 };
 
-export const getResultMessage = (result: 'win' | 'lose' | 'draw' | 'surrender', coinChange: number): string => {
+export const getResultMessage = (result: 'win' | 'lose' | 'draw', coinChange: number): string => {
   const changeText = coinChange >= 0 ? `+${coinChange}` : `${coinChange}`;
   switch (result) {
     case 'win':
@@ -81,8 +79,6 @@ export const getResultMessage = (result: 'win' | 'lose' | 'draw' | 'surrender', 
       return `🤝 Hòa! Bạn được ${changeText} xu!`;
     case 'lose':
       return `😔 Bạn thua và bị trừ ${Math.abs(coinChange)} xu`;
-    case 'surrender': // Thêm message cho đầu hàng
-      return `🏳️ Bạn đã đầu hàng và bị trừ ${Math.abs(coinChange)} xu`;
     default:
       return '';
   }
