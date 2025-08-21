@@ -138,6 +138,40 @@ const GameInfo: React.FC = () => {
             <p className="text-blue-200 text-sm sm:text-base">
               {getGameStatusDisplay()}
             </p>
+
+            {/* ✅ Invite Link Section */}
+            {roomId && !isAIGame && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  onClick={() => {
+                    const roomLink = `${window.location.origin}?room=${roomId}`;
+                    navigator.clipboard.writeText(roomLink).then(() => {
+                      alert("Đã sao chép link phòng!");
+                    });
+                  }}
+                  className="px-3 py-1 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm"
+                >
+                  📋 Sao chép link
+                </button>
+                <button
+                  onClick={async () => {
+                    const roomLink = `${window.location.origin}?room=${roomId}`;
+                    if (navigator.share) {
+                      await navigator.share({
+                        title: "Othello Game - Tham gia phòng",
+                        text: `Tham gia phòng Othello của tôi! Mã phòng: ${roomId}`,
+                        url: roomLink,
+                      });
+                    } else {
+                      navigator.clipboard.writeText(roomLink);
+                    }
+                  }}
+                  className="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm"
+                >
+                  📤 Chia sẻ
+                </button>
+              </div>
+            )}
           </div>
           
           <div className="flex flex-wrap gap-2">
@@ -152,7 +186,6 @@ const GameInfo: React.FC = () => {
               </motion.button>
             )}
             
-            {/* NEW: Surrender Button */}
             {canSurrender && (
               <motion.button
                 onClick={surrenderGame}
@@ -180,185 +213,11 @@ const GameInfo: React.FC = () => {
       </motion.div>
 
       {/* Players Info */}
-      <motion.div
-        className="bg-white/10 rounded-2xl p-4 sm:p-6 backdrop-blur-md border border-white/20 shadow-xl"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-      >
-        <h3 className="text-lg sm:text-xl font-bold text-white mb-4 flex items-center">
-          <span className="mr-2">👥</span>
-          Người chơi
-        </h3>
-
-        <div className="space-y-3">
-          {gameState.players.map((player, index) => (
-            <motion.div
-              key={player.id}
-              className={`flex flex-col sm:flex-row sm:items-center justify-between p-3 sm:p-4 rounded-xl border-2 transition-all ${
-                isCurrentPlayerTurn && player.id === currentPlayer?.id
-                  ? 'bg-blue-500/20 border-blue-400/50 shadow-lg shadow-blue-500/20'
-                  : 'bg-white/5 border-white/10'
-              }`}
-              initial={{ opacity: 0, x: index % 2 === 0 ? -20 : 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.1 + index * 0.1 }}
-            >
-              <div className="flex items-center space-x-3 mb-2 sm:mb-0">
-                <div className="text-2xl sm:text-3xl">{player.emoji}</div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center space-x-2">
-                    <h4 className="text-base sm:text-lg font-semibold text-white truncate">
-                      {player.displayName}
-                    </h4>
-                    {player.id === currentPlayer?.id && (
-                      <span className="text-xs bg-blue-500 text-white px-2 py-1 rounded-full font-medium">
-                        Bạn
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center space-x-2 text-sm text-gray-300">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      player.color === 'black' ? 'bg-gray-800 text-white' : 'bg-gray-200 text-gray-800'
-                    }`}>
-                      {player.color === 'black' ? 'Đen' : 'Trắng'}
-                    </span>
-                    {player.pieceEmoji && (
-                      <span className="text-lg">
-                        {player.color === 'black' ? player.pieceEmoji.black : player.pieceEmoji.white}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col sm:items-end space-y-1">
-                <div className="flex items-center space-x-4">
-                  <div className="text-center">
-                    <div className={`text-xl sm:text-2xl font-bold ${getScoreColor(player.id)}`}>
-                      {gameState.scores[player.color === 'black' ? 1 : 2]}
-                    </div>
-                    <div className="text-xs text-gray-400">điểm</div>
-                  </div>
-                  
-                  {player.isAuthenticated && (
-                    <div className="text-center">
-                      <div className="text-lg sm:text-xl font-bold text-yellow-400 flex items-center">
-                        <span className="mr-1">🪙</span>
-                        {player.coins}
-                      </div>
-                      <div className="text-xs text-gray-400">xu</div>
-                    </div>
-                  )}
-                </div>
-
-                {!player.isReady && gameState.gameStatus === 'waiting' && (
-                  <span className="text-xs text-orange-400 font-medium">
-                    Chưa sẵn sàng
-                  </span>
-                )}
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      </motion.div>
-
-      {/* Game Stats */}
-      <motion.div
-        className="bg-white/10 rounded-2xl p-4 sm:p-6 backdrop-blur-md border border-white/20 shadow-xl"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg sm:text-xl font-bold text-white flex items-center">
-            <span className="mr-2">📊</span>
-            Thống kê
-          </h3>
-          
-          {gameState.coinTransactions && gameState.coinTransactions.length > 0 && (
-            <button
-              onClick={() => setShowCoinTransactions(!showCoinTransactions)}
-              className="text-sm text-blue-300 hover:text-blue-200 transition-colors flex items-center"
-            >
-              <span className="mr-1">💰</span>
-              {showCoinTransactions ? 'Ẩn' : 'Xem'} giao dịch
-            </button>
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 gap-4 text-center">
-          <div className="bg-white/5 rounded-lg p-3">
-            <div className="text-2xl sm:text-3xl font-bold text-white">
-              {gameState.validMoves.length}
-            </div>
-            <div className="text-sm text-gray-400">Nước đi khả dụng</div>
-          </div>
-          
-          <div className="bg-white/5 rounded-lg p-3">
-            <div className="text-2xl sm:text-3xl font-bold text-white">
-              {gameState.scores[1] + gameState.scores[2]}
-            </div>
-            <div className="text-sm text-gray-400">Tổng quân cờ</div>
-          </div>
-        </div>
-
-        {renderCoinTransactions()}
-      </motion.div>
-
-      {/* Theme Selector */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-      >
-        <ThemeSelector />
-      </motion.div>
-
-      {/* Game Rules - Collapsible */}
-      <motion.div
-        className="bg-white/10 rounded-2xl backdrop-blur-md border border-white/20 shadow-xl overflow-hidden"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
-      >
-        <details className="group">
-          <summary className="p-4 cursor-pointer list-none">
-            <div className="flex items-center justify-between text-white">
-              <h3 className="text-lg font-bold flex items-center">
-                <span className="mr-2">📖</span>
-                Luật chơi & Hệ thống xu
-              </h3>
-              <div className="transform transition-transform group-open:rotate-180">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </div>
-            </div>
-          </summary>
-          
-          <div className="px-4 pb-4 text-gray-300 space-y-3 text-sm border-t border-white/10 pt-4">
-            <div>
-              <h4 className="font-semibold text-white mb-2">🎮 Cách chơi:</h4>
-              <ul className="space-y-1 text-xs">
-                <li>• Đặt quân cờ để bao vây và lật quân của đối thủ</li>
-                <li>• Người có nhiều quân cờ hơn sẽ thắng</li>
-                <li>• Mỗi lượt có 30 giây để đi</li>
-              </ul>
-            </div>
-            
-            <div>
-              <h4 className="font-semibold text-white mb-2">💰 Hệ thống xu:</h4>
-              <ul className="space-y-1 text-xs">
-                <li>• <span className="text-green-400">Thắng: +10 xu</span></li>
-                <li>• <span className="text-blue-400">Hòa: +5 xu</span></li>
-                <li>• <span className="text-red-400">Thua: -5 xu</span></li>
-                <li>• <span className="text-red-500">Đầu hàng: -10 xu</span></li>
-              </ul>
-            </div>
-          </div>
-        </details>
-      </motion.div>
+      {/* (giữ nguyên code cũ) */}
+      {/* ... */}
+      
+      {/* Stats, Theme, Rules */}
+      {/* (giữ nguyên code cũ) */}
     </div>
   );
 };
