@@ -8,15 +8,11 @@ const Board: React.FC = () => {
   const { socket } = useSocket();
   const [showCoinsEarned, setShowCoinsEarned] = useState(false);
   const [coinsEarnedInfo, setCoinsEarnedInfo] = useState<{ amount: number; isCurrentPlayer: boolean } | null>(null);
-  const [showSurrenderMessage, setShowSurrenderMessage] = useState(false);
-  const [surrenderMessage, setSurrenderMessage] = useState('');
 
   if (!gameState) return null;
 
   const currentPlayer = gameState.players.find(p => p.id === socket?.id);
   const isMyTurn = currentPlayer && gameState.players[gameState.currentPlayer - 1]?.id === socket?.id;
-  
-  // Disable board when game is finished (including surrender) or not player's turn
   const canPlay = gameState.gameStatus === 'playing' && isMyTurn;
 
   // Show coins earned animation when game finishes and player won
@@ -37,31 +33,6 @@ const Board: React.FC = () => {
       return () => clearTimeout(timer);
     }
   }, [gameState.gameStatus, gameState.coinsAwarded, socket?.id]);
-
-  // Handle surrender message display
-  useEffect(() => {
-    if (gameState.gameStatus === 'finished' && gameState.surrenderedPlayerId) {
-      const surrenderedPlayer = gameState.players.find(p => p.id === gameState.surrenderedPlayerId);
-      const winnerPlayer = gameState.players.find(p => p.id !== gameState.surrenderedPlayerId);
-      
-      if (surrenderedPlayer && winnerPlayer) {
-        const isSurrenderedPlayer = gameState.surrenderedPlayerId === socket?.id;
-        setSurrenderMessage(
-          isSurrenderedPlayer 
-            ? `Bạn đã đầu hàng! ${winnerPlayer.displayName} thắng!`
-            : `${surrenderedPlayer.displayName} đã đầu hàng! Bạn thắng!`
-        );
-        setShowSurrenderMessage(true);
-
-        // Hide message after 5 seconds
-        const timer = setTimeout(() => {
-          setShowSurrenderMessage(false);
-        }, 5000);
-
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [gameState.gameStatus, gameState.surrenderedPlayerId, gameState.players, socket?.id]);
 
   const handleSquareClick = (row: number, col: number) => {
     if (!canPlay) return;
@@ -162,57 +133,6 @@ const Board: React.FC = () => {
 
   return (
     <div className="flex flex-col items-center space-y-3 sm:space-y-4 w-full max-w-2xl mx-auto relative">
-      {/* Surrender Message Animation */}
-      <AnimatePresence>
-        {showSurrenderMessage && (
-          <motion.div
-            className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <motion.div
-              className="bg-gradient-to-r from-red-500 via-red-600 to-red-700 text-white px-8 py-6 rounded-2xl shadow-2xl border-4 border-red-300"
-              initial={{ scale: 0, rotate: -180 }}
-              animate={{ scale: 1, rotate: 0 }}
-              exit={{ scale: 0, rotate: 180 }}
-              transition={{ 
-                type: "spring", 
-                stiffness: 200, 
-                damping: 15,
-                duration: 0.8
-              }}
-            >
-              <div className="text-center">
-                <motion.div
-                  className="text-6xl mb-4"
-                  animate={{ 
-                    rotate: [0, 10, -10, 10, 0],
-                    scale: [1, 1.1, 1, 1.1, 1]
-                  }}
-                  transition={{ 
-                    duration: 2,
-                    repeat: Infinity,
-                    ease: "easeInOut"
-                  }}
-                >
-                  🏃‍♂️
-                </motion.div>
-                <motion.div
-                  className="text-2xl font-bold mb-2"
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 0.3 }}
-                >
-                  {surrenderMessage}
-                </motion.div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Coins Earned Animation */}
       <AnimatePresence>
         {showCoinsEarned && coinsEarnedInfo && (
@@ -329,11 +249,7 @@ const Board: React.FC = () => {
             </div>
 
             {/* Game board - Much larger and more responsive */}
-            <div 
-              className={`grid grid-cols-8 gap-0 p-2 sm:p-3 md:p-4 rounded-xl sm:rounded-2xl shadow-2xl border-2 sm:border-4 border-gray-500 ${
-                gameState.gameStatus === 'finished' ? 'opacity-75 pointer-events-none' : ''
-              }`}
-            >
+            <div className="grid grid-cols-8 gap-0 p-2 sm:p-3 md:p-4 rounded-xl sm:rounded-2xl shadow-2xl border-2 sm:border-4 border-gray-500">
               {gameState.board.map((row, rowIndex) =>
                 row.map((cell, colIndex) => {
                   const isValid = isValidMove(rowIndex, colIndex);
@@ -404,7 +320,7 @@ const Board: React.FC = () => {
         </div>
       </div>
 
-      {/* Turn indicator - Hide when game is finished */}
+      {/* Turn indicator */}
       {gameState.gameStatus === 'playing' && (
         <motion.div
           className="text-center p-4 sm:p-5 rounded-xl bg-white/10 backdrop-blur-sm w-full max-w-lg"
@@ -433,34 +349,6 @@ const Board: React.FC = () => {
               {gameState.timeLeft}s
             </motion.span>
           </div>
-        </motion.div>
-      )}
-
-      {/* Game finished indicator */}
-      {gameState.gameStatus === 'finished' && (
-        <motion.div
-          className="text-center p-4 sm:p-5 rounded-xl bg-white/10 backdrop-blur-sm w-full max-w-lg border-2 border-yellow-400/30"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-        >
-          <div className="text-lg sm:text-xl font-bold text-yellow-400 mb-2">
-            🏁 Game đã kết thúc!
-          </div>
-          
-          {gameState.surrenderedPlayerId ? (
-            <div className="text-sm text-gray-300">
-              Kết thúc bằng đầu hàng
-            </div>
-          ) : gameState.winnerId === 'draw' ? (
-            <div className="text-sm text-blue-300">
-              🤝 Kết quả hòa!
-            </div>
-          ) : (
-            <div className="text-sm text-green-300">
-              🏆 Có người thắng!
-            </div>
-          )}
         </motion.div>
       )}
     </div>
