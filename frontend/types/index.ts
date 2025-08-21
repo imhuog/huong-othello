@@ -138,8 +138,8 @@ export const BOARD_THEMES: ThemeColors[] = [
   }
 ];
 
-// Định nghĩa type cho game result - FIXED: Thêm 'surrender_win'
-export type GameResult = 'win' | 'lose' | 'draw' | 'surrender' | 'surrender_win';
+// Định nghĩa type cho game result - FIXED: Thêm 'surrender_win' và 'surrender_lose'
+export type GameResult = 'win' | 'lose' | 'draw' | 'surrender' | 'surrender_win' | 'surrender_lose';
 
 // Thêm interface cho coinsAwarded - FIXED: Sử dụng GameResult type
 export interface CoinsAwarded {
@@ -286,7 +286,7 @@ export const PIECE_EMOJI_OPTIONS = [
 ];
 
 // Utility functions
-// FIXED: Updated function to handle all game results including 'surrender_win'
+// FIXED: Updated function to handle all game results including 'surrender_win' và 'surrender_lose'
 export const getCoinChangeForResult = (result: GameResult): number => {
   switch (result) {
     case 'win':
@@ -295,6 +295,7 @@ export const getCoinChangeForResult = (result: GameResult): number => {
     case 'draw':
       return 5;
     case 'lose':
+    case 'surrender_lose': // FIXED: Handle surrender_lose case
       return -5;
     case 'surrender':
       return -10;
@@ -303,7 +304,7 @@ export const getCoinChangeForResult = (result: GameResult): number => {
   }
 };
 
-// FIXED: Updated function to handle all game results including 'surrender_win'
+// FIXED: Updated function to handle all game results including 'surrender_win' và 'surrender_lose'
 export const getResultMessage = (result: GameResult, coinChange: number): string => {
   const changeText = coinChange >= 0 ? `+${coinChange}` : `${coinChange}`;
   switch (result) {
@@ -315,6 +316,8 @@ export const getResultMessage = (result: GameResult, coinChange: number): string
       return `🤝 Hòa! Bạn được ${changeText} xu!`;
     case 'lose':
       return `😔 Bạn thua và bị trừ ${Math.abs(coinChange)} xu`;
+    case 'surrender_lose': // FIXED: Handle surrender_lose case
+      return `😔 Đối thủ đầu hàng nhưng bạn vẫn bị trừ ${Math.abs(coinChange)} xu`;
     case 'surrender':
       return `🏃‍♂️ Bạn đã đầu hàng và bị trừ ${Math.abs(coinChange)} xu`;
     default:
