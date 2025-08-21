@@ -1,4 +1,3 @@
-// frontend/contexts/GameContext.tsx
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { GameState, ChatMessage, ThemeColors, BOARD_THEMES, AIDifficulty, CoinTransaction, getResultMessage } from '../types';
 import { useSocket } from './SocketContext';
@@ -7,7 +6,6 @@ import toast from 'react-hot-toast';
 interface GameContextType {
   gameState: GameState | null;
   roomId: string | null;
-  currentRoomId: string | null; // FIXED: Expose currentRoomId for MainMenu
   messages: ChatMessage[];
   currentTheme: ThemeColors;
   isAIGame: boolean;
@@ -22,9 +20,6 @@ interface GameContextType {
   newGame: () => void;
   sendMessage: (message: string) => void;
   setTheme: (theme: ThemeColors) => void;
-  surrenderGame: () => void;
-  leaveRoom: () => void; // FIXED: Add leaveRoom to interface
-  resetGameState: () => void; // FIXED: Add reset function for returning to menu
 }
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
@@ -46,29 +41,9 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [roomId, setRoomId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  // Initialize with the classic theme (first theme in the array)
   const [currentTheme, setCurrentTheme] = useState<ThemeColors>(BOARD_THEMES[0]);
   const [isAIGame, setIsAIGame] = useState(false);
   const [aiDifficulty, setAiDifficulty] = useState<AIDifficulty | null>(null);
-
-  // FIXED: Reset game state function
-  const resetGameState = () => {
-    setGameState(null);
-    setRoomId(null);
-    setMessages([]);
-    setIsAIGame(false);
-    setAiDifficulty(null);
-    // Don't reset theme - let user keep their preferred theme
-  };
-
-  // FIXED: Enhanced leave room function
-  const leaveRoom = () => {
-    if (socket && roomId) {
-      socket.emit('leaveRoom', roomId);
-      resetGameState();
-      toast.success('Đã rời phòng!');
-    }
-  };
 
   // Helper function to sync current player coins with game state
   const syncPlayerCoins = (gameState: GameState) => {
@@ -130,7 +105,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
       setGameState(prevState => {
         // Show coin transaction notifications
         if (newGameState.coinTransactions && 
-            (newGameState.gameStatus === 'finished' || newGameState.gameStatus === 'surrendered') &&
+            newGameState.gameStatus === 'finished' &&
             (!prevState || !prevState.coinTransactions)) {
           
           // Find current player's transaction
@@ -140,7 +115,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
           
           if (playerTransaction) {
             const message = getResultMessage(
-              playerTransaction.result as 'win' | 'lose' | 'draw' | 'surrender', 
+              playerTransaction.result as 'win' | 'lose' | 'draw', 
               playerTransaction.coinChange
             );
             
@@ -183,18 +158,6 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
                 },
                 icon: '😔',
               });
-            } else if (playerTransaction.result === 'surrender') {
-              // Handle surrender notification
-              toast.error(message, {
-                duration: 5000,
-                style: {
-                  background: 'linear-gradient(135deg, #f97316, #ea580c)',
-                  color: 'white',
-                  fontWeight: 'bold',
-                  border: '2px solid #ea580c',
-                },
-                icon: '🏃‍♂️',
-              });
             }
           }
         }
@@ -212,27 +175,8 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
       setGameState(prev => prev ? { ...prev, timeLeft } : null);
     });
 
-    // FIXED: Handle connection errors
-    socket.on('connect_error', (error) => {
-      console.error('Socket connection error:', error);
-      toast.error('Lỗi kết nối! Vui lòng thử lại.');
-    });
-
-    socket.on('disconnect', (reason) => {
-      console.log('Socket disconnected:', reason);
-      if (reason === 'io server disconnect') {
-        // Server disconnected, need to reconnect manually
-        socket.connect();
-      }
-    });
-
     socket.on('error', (errorMessage: string) => {
       toast.error(errorMessage);
-    });
-
-    // FIXED: Handle room leave confirmation
-    socket.on('roomLeft', () => {
-      resetGameState();
     });
 
     return () => {
@@ -242,10 +186,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
       socket.off('gameStateUpdate');
       socket.off('newMessage');
       socket.off('timerUpdate');
-      socket.off('connect_error');
-      socket.off('disconnect');
       socket.off('error');
-      socket.off('roomLeft');
     };
   }, [socket, currentPlayer, refreshPlayerData]);
 
@@ -331,40 +272,11 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
     toast.success(`Đã chọn theme ${theme.name} ${theme.emoji}`);
   };
 
-  // Surrender function
-  const surrenderGame = () => {
-    if (!socket || !roomId || !gameState) {
-      toast.error('Không thể đầu hàng lúc này!');
-      return;
-    }
-
-    if (gameState.gameStatus !== 'playing') {
-      toast.error('Chỉ có thể đầu hàng khi game đang diễn ra!');
-      return;
-    }
-
-    // Show confirmation dialog
-    const confirmed = window.confirm(
-      '🏃‍♂️ Bạn có chắc chắn muốn đầu hàng?\n\n' +
-      '⚠️ Lưu ý: Bạn sẽ bị trừ 10 xu và người chơi còn lại sẽ được +10 xu.'
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    // Emit surrender event
-    socket.emit('surrenderGame', roomId);
-    
-    toast.loading('Đang xử lý đầu hàng...', { duration: 2000 });
-  };
-
   return (
     <GameContext.Provider
       value={{
         gameState,
         roomId,
-        currentRoomId: roomId, // FIXED: Expose currentRoomId for MainMenu
         messages,
         currentTheme,
         isAIGame,
@@ -377,9 +289,6 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
         newGame,
         sendMessage,
         setTheme,
-        surrenderGame,
-        leaveRoom, // FIXED: Expose leaveRoom in context
-        resetGameState, // FIXED: Add reset function to context
       }}
     >
       {children}
