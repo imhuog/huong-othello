@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 interface GameContextType {
   gameState: GameState | null;
   roomId: string | null;
+  currentRoomId: string | null; // FIXED: Expose currentRoomId for MainMenu
   messages: ChatMessage[];
   currentTheme: ThemeColors;
   isAIGame: boolean;
@@ -21,7 +22,8 @@ interface GameContextType {
   newGame: () => void;
   sendMessage: (message: string) => void;
   setTheme: (theme: ThemeColors) => void;
-  surrenderGame: () => void; // NEW: Surrender function
+  surrenderGame: () => void;
+  resetGameState: () => void; // FIXED: Add reset function for returning to menu
 }
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
@@ -47,6 +49,16 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
   const [currentTheme, setCurrentTheme] = useState<ThemeColors>(BOARD_THEMES[0]);
   const [isAIGame, setIsAIGame] = useState(false);
   const [aiDifficulty, setAiDifficulty] = useState<AIDifficulty | null>(null);
+
+  // FIXED: Reset game state function
+  const resetGameState = () => {
+    setGameState(null);
+    setRoomId(null);
+    setMessages([]);
+    setIsAIGame(false);
+    setAiDifficulty(null);
+    // Don't reset theme - let user keep their preferred theme
+  };
 
   // Helper function to sync current player coins with game state
   const syncPlayerCoins = (gameState: GameState) => {
@@ -118,7 +130,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
           
           if (playerTransaction) {
             const message = getResultMessage(
-              playerTransaction.result,
+              playerTransaction.result as 'win' | 'lose' | 'draw' | 'surrender', 
               playerTransaction.coinChange
             );
             
@@ -128,7 +140,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
             }
             
             // Show toast notification based on result
-            if (playerTransaction.result === 'win' || playerTransaction.result === 'surrender_win') {
+            if (playerTransaction.result === 'win') {
               toast.success(message, {
                 duration: 5000,
                 style: {
@@ -150,22 +162,28 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
                 },
                 icon: '🤝',
               });
-            } else {
-              // Handle lose or surrender_lose
-              const isSurrender = playerTransaction.result === 'surrender_lose';
+            } else if (playerTransaction.result === 'lose') {
               toast.error(message, {
-                duration: isSurrender ? 5000 : 4000,
+                duration: 4000,
                 style: {
-                  background: isSurrender 
-                    ? 'linear-gradient(135deg, #f97316, #ea580c)'
-                    : 'linear-gradient(135deg, #ef4444, #dc2626)',
+                  background: 'linear-gradient(135deg, #ef4444, #dc2626)',
                   color: 'white',
                   fontWeight: 'bold',
-                  border: isSurrender 
-                    ? '2px solid #ea580c'
-                    : '2px solid #dc2626',
+                  border: '2px solid #dc2626',
                 },
-                icon: isSurrender ? '🏃‍♂️' : '😔',
+                icon: '😔',
+              });
+            } else if (playerTransaction.result === 'surrender') {
+              // Handle surrender notification
+              toast.error(message, {
+                duration: 5000,
+                style: {
+                  background: 'linear-gradient(135deg, #f97316, #ea580c)',
+                  color: 'white',
+                  fontWeight: 'bold',
+                  border: '2px solid #ea580c',
+                },
+                icon: '🏃‍♂️',
               });
             }
           }
@@ -184,8 +202,27 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
       setGameState(prev => prev ? { ...prev, timeLeft } : null);
     });
 
+    // FIXED: Handle connection errors
+    socket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error);
+      toast.error('Lỗi kết nối! Vui lòng thử lại.');
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.log('Socket disconnected:', reason);
+      if (reason === 'io server disconnect') {
+        // Server disconnected, need to reconnect manually
+        socket.connect();
+      }
+    });
+
     socket.on('error', (errorMessage: string) => {
       toast.error(errorMessage);
+    });
+
+    // FIXED: Handle room leave confirmation
+    socket.on('roomLeft', () => {
+      resetGameState();
     });
 
     return () => {
@@ -195,7 +232,10 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
       socket.off('gameStateUpdate');
       socket.off('newMessage');
       socket.off('timerUpdate');
+      socket.off('connect_error');
+      socket.off('disconnect');
       socket.off('error');
+      socket.off('roomLeft');
     };
   }, [socket, currentPlayer, refreshPlayerData]);
 
@@ -281,7 +321,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
     toast.success(`Đã chọn theme ${theme.name} ${theme.emoji}`);
   };
 
-  // NEW: Surrender function
+  // Surrender function
   const surrenderGame = () => {
     if (!socket || !roomId || !gameState) {
       toast.error('Không thể đầu hàng lúc này!');
@@ -309,11 +349,20 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
     toast.loading('Đang xử lý đầu hàng...', { duration: 2000 });
   };
 
+  // FIXED: Enhanced leave room function
+  const leaveRoom = () => {
+    if (socket && roomId) {
+      socket.emit('leaveRoom', roomId);
+      resetGameState();
+    }
+  };
+
   return (
     <GameContext.Provider
       value={{
         gameState,
         roomId,
+        currentRoomId: roomId, // FIXED: Expose currentRoomId for MainMenu
         messages,
         currentTheme,
         isAIGame,
@@ -326,7 +375,8 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
         newGame,
         sendMessage,
         setTheme,
-        surrenderGame, // NEW: Add surrender function to context
+        surrenderGame,
+        resetGameState, // FIXED: Add reset function to context
       }}
     >
       {children}
