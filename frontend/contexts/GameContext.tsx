@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 
 interface GameContextType {
   gameState: GameState | null;
-  roomId: string | null; // This is the main roomId that MainMenu uses
+  roomId: string | null;
   currentRoomId: string | null; // FIXED: Expose currentRoomId for MainMenu
   messages: ChatMessage[];
   currentTheme: ThemeColors;
@@ -23,6 +23,7 @@ interface GameContextType {
   sendMessage: (message: string) => void;
   setTheme: (theme: ThemeColors) => void;
   surrenderGame: () => void;
+  leaveRoom: () => void; // FIXED: Add leaveRoom to interface
   resetGameState: () => void; // FIXED: Add reset function for returning to menu
 }
 
@@ -60,6 +61,15 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
     // Don't reset theme - let user keep their preferred theme
   };
 
+  // FIXED: Enhanced leave room function
+  const leaveRoom = () => {
+    if (socket && roomId) {
+      socket.emit('leaveRoom', roomId);
+      resetGameState();
+      toast.success('Đã rời phòng!');
+    }
+  };
+
   // Helper function to sync current player coins with game state
   const syncPlayerCoins = (gameState: GameState) => {
     if (!currentPlayer || !socket) return gameState;
@@ -87,8 +97,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
 
     // Socket event listeners
     socket.on('roomCreated', (data: { roomId: string; gameState: GameState }) => {
-      console.log('🏠 Room created event received:', data.roomId); // Debug log
-      setRoomId(data.roomId); // ✅ This should trigger the MainMenu useEffect
+      setRoomId(data.roomId);
       // Sync coins when room is created
       const syncedGameState = syncPlayerCoins(data.gameState);
       setGameState(syncedGameState);
@@ -98,7 +107,6 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
     });
 
     socket.on('roomJoined', (data: { roomId: string; gameState: GameState }) => {
-      console.log('🚀 Room joined event received:', data.roomId); // Debug log
       setRoomId(data.roomId);
       // Sync coins when joining room
       const syncedGameState = syncPlayerCoins(data.gameState);
@@ -109,7 +117,6 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
     });
 
     socket.on('aiGameCreated', (data: { roomId: string; gameState: GameState; difficulty: AIDifficulty }) => {
-      console.log('🤖 AI game created event received:', data.roomId); // Debug log
       setRoomId(data.roomId);
       // Sync coins when AI game is created
       const syncedGameState = syncPlayerCoins(data.gameState);
@@ -257,7 +264,6 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
       toast.error('Bạn cần đăng nhập trước!');
       return;
     }
-    console.log('📤 Creating room...'); // Debug log
     socket.emit('createRoom', playerData);
   };
 
@@ -353,20 +359,12 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
     toast.loading('Đang xử lý đầu hàng...', { duration: 2000 });
   };
 
-  // FIXED: Enhanced leave room function
-  const leaveRoom = () => {
-    if (socket && roomId) {
-      socket.emit('leaveRoom', roomId);
-      resetGameState();
-    }
-  };
-
   return (
     <GameContext.Provider
       value={{
         gameState,
-        roomId, // ✅ This is what MainMenu component accesses as currentRoomId
-        currentRoomId: roomId, // ✅ Both are the same value
+        roomId,
+        currentRoomId: roomId, // FIXED: Expose currentRoomId for MainMenu
         messages,
         currentTheme,
         isAIGame,
@@ -380,6 +378,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
         sendMessage,
         setTheme,
         surrenderGame,
+        leaveRoom, // FIXED: Expose leaveRoom in context
         resetGameState, // FIXED: Add reset function to context
       }}
     >
