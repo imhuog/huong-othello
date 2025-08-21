@@ -9,6 +9,7 @@ const GameInfo: React.FC = () => {
   const { gameState, roomId, newGame, startGame, isAIGame, aiDifficulty, surrenderGame } = useGame();
   const { currentPlayer } = useSocket();
   const [showCoinTransactions, setShowCoinTransactions] = useState(false);
+  const [copySuccess, setCopySuccess] = useState(false);
 
   if (!gameState) return null;
 
@@ -24,6 +25,27 @@ const GameInfo: React.FC = () => {
     !gameState.players.every(p => p.isReady);
 
   const canSurrender = gameState.gameStatus === 'playing' && currentPlayerInGame;
+
+  // Copy room link function
+  const copyRoomLink = async () => {
+    try {
+      const roomLink = `${window.location.origin}/room/${roomId}`;
+      await navigator.clipboard.writeText(roomLink);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy: ', err);
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = `${window.location.origin}/room/${roomId}`;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    }
+  };
 
   const getGameStatusDisplay = () => {
     if (gameState.gameStatus === 'waiting') {
@@ -152,7 +174,6 @@ const GameInfo: React.FC = () => {
               </motion.button>
             )}
             
-            {/* NEW: Surrender Button */}
             {canSurrender && (
               <motion.button
                 onClick={surrenderGame}
@@ -178,6 +199,68 @@ const GameInfo: React.FC = () => {
           </div>
         </div>
       </motion.div>
+
+      {/* Room Code & Invite Link - Only show for multiplayer games */}
+      {!isAIGame && (
+        <motion.div
+          className="bg-white/10 rounded-2xl p-4 sm:p-6 backdrop-blur-md border border-white/20 shadow-xl"
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+        >
+          <div className="flex flex-col space-y-3">
+            <h3 className="text-lg font-bold text-white flex items-center">
+              <span className="mr-2">🎯</span>
+              Mã phòng
+            </h3>
+            
+            <div className="flex flex-col sm:flex-row gap-3">
+              {/* Room Code Display */}
+              <div className="flex-1 bg-white/5 rounded-lg p-3 border border-white/10">
+                <div className="text-center">
+                  <div className="text-2xl font-mono font-bold text-yellow-400 tracking-wider">
+                    {roomId}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-1">Mã phòng</div>
+                </div>
+              </div>
+              
+              {/* Copy Link Button */}
+              <motion.button
+                onClick={copyRoomLink}
+                className={`px-6 py-3 rounded-lg font-semibold transition-all shadow-lg ${
+                  copySuccess
+                    ? 'bg-green-600 text-white border border-green-400/30'
+                    : 'bg-purple-600 hover:bg-purple-500 text-white border border-purple-400/30'
+                }`}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                disabled={copySuccess}
+              >
+                <div className="flex items-center space-x-2">
+                  <span>{copySuccess ? '✅' : '📋'}</span>
+                  <span className="whitespace-nowrap">
+                    {copySuccess ? 'Đã sao chép!' : 'Copy link'}
+                  </span>
+                </div>
+              </motion.button>
+            </div>
+            
+            {/* Instructions */}
+            {gameState.players.length === 1 && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="bg-blue-500/20 border border-blue-400/30 rounded-lg p-3"
+              >
+                <div className="text-blue-300 text-sm text-center">
+                  💡 Chia sẻ mã phòng <span className="font-mono font-bold">{roomId}</span> hoặc link để mời bạn bè tham gia!
+                </div>
+              </motion.div>
+            )}
+          </div>
+        </motion.div>
+      )}
 
       {/* Players Info */}
       <motion.div
