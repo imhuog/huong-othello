@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 
 interface GameContextType {
   gameState: GameState | null;
-  roomId: string | null;
+  roomId: string | null; // This is the main roomId that MainMenu uses
   currentRoomId: string | null; // FIXED: Expose currentRoomId for MainMenu
   messages: ChatMessage[];
   currentTheme: ThemeColors;
@@ -87,7 +87,8 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
 
     // Socket event listeners
     socket.on('roomCreated', (data: { roomId: string; gameState: GameState }) => {
-      setRoomId(data.roomId);
+      console.log('🏠 Room created event received:', data.roomId); // Debug log
+      setRoomId(data.roomId); // ✅ This should trigger the MainMenu useEffect
       // Sync coins when room is created
       const syncedGameState = syncPlayerCoins(data.gameState);
       setGameState(syncedGameState);
@@ -97,6 +98,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
     });
 
     socket.on('roomJoined', (data: { roomId: string; gameState: GameState }) => {
+      console.log('🚀 Room joined event received:', data.roomId); // Debug log
       setRoomId(data.roomId);
       // Sync coins when joining room
       const syncedGameState = syncPlayerCoins(data.gameState);
@@ -107,6 +109,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
     });
 
     socket.on('aiGameCreated', (data: { roomId: string; gameState: GameState; difficulty: AIDifficulty }) => {
+      console.log('🤖 AI game created event received:', data.roomId); // Debug log
       setRoomId(data.roomId);
       // Sync coins when AI game is created
       const syncedGameState = syncPlayerCoins(data.gameState);
@@ -254,6 +257,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
       toast.error('Bạn cần đăng nhập trước!');
       return;
     }
+    console.log('📤 Creating room...'); // Debug log
     socket.emit('createRoom', playerData);
   };
 
@@ -361,8 +365,8 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
     <GameContext.Provider
       value={{
         gameState,
-        roomId,
-        currentRoomId: roomId, // FIXED: Expose currentRoomId for MainMenu
+        roomId, // ✅ This is what MainMenu component accesses as currentRoomId
+        currentRoomId: roomId, // ✅ Both are the same value
         messages,
         currentTheme,
         isAIGame,
