@@ -7,17 +7,16 @@ import ThemeSelector from './ThemeSelector';
 import PlayerProfile from './PlayerProfile';
 
 const MainMenu: React.FC = () => {
-  const { createRoom, joinRoom, createAIGame } = useGame();
+  const { createRoom, joinRoom, createAIGame, roomId } = useGame(); // FIXED: Get roomId from useGame
   const { currentPlayer, logoutPlayer } = useSocket();
   const [activeTab, setActiveTab] = useState<'create' | 'join' | 'ai'>('create');
-  const [roomId, setRoomId] = useState('');
+  const [joinRoomId, setJoinRoomId] = useState(''); // FIXED: Rename to avoid confusion with roomId from useGame
   const [selectedDifficulty, setSelectedDifficulty] = useState<AIDifficulty>('medium');
   const [selectedPieceStyle, setSelectedPieceStyle] = useState(PIECE_EMOJI_OPTIONS[0]);
   const [showPieceSelector, setShowPieceSelector] = useState(false);
   
   // Room sharing state - FIXED: Better state management
   const [showRoomShare, setShowRoomShare] = useState(false);
-  const [createdRoomId, setCreatedRoomId] = useState('');
   const [copySuccess, setCopySuccess] = useState(false);
 
   // Auto-fill room ID from URL
@@ -25,7 +24,7 @@ const MainMenu: React.FC = () => {
     const urlParams = new URLSearchParams(window.location.search);
     const roomFromUrl = urlParams.get('room');
     if (roomFromUrl) {
-      setRoomId(roomFromUrl.toUpperCase());
+      setJoinRoomId(roomFromUrl.toUpperCase());
       setActiveTab('join');
     }
   }, []);
@@ -43,17 +42,13 @@ const MainMenu: React.FC = () => {
     }
   }, [currentPlayer]);
 
-  // FIXED: Listen for room creation from GameContext
-  const { roomId: currentRoomId } = useGame();
+  // FIXED: Listen for room creation - show modal when room is created
   useEffect(() => {
-    // When a new room is created, show the sharing modal
-    if (currentRoomId && currentRoomId !== createdRoomId) {
-      setCreatedRoomId(currentRoomId);
+    if (roomId && roomId.length === 6) { // Valid room ID format
       setShowRoomShare(true);
-      // Reset copy success state
       setCopySuccess(false);
     }
-  }, [currentRoomId, createdRoomId]);
+  }, [roomId]);
 
   const handleCreateRoom = (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,7 +67,7 @@ const MainMenu: React.FC = () => {
 
   const handleJoinRoom = (e: React.FormEvent) => {
     e.preventDefault();
-    if (currentPlayer && roomId.trim()) {
+    if (currentPlayer && joinRoomId.trim()) {
       const playerData = {
         name: currentPlayer.displayName,
         emoji: currentPlayer.emoji,
@@ -81,7 +76,7 @@ const MainMenu: React.FC = () => {
           white: selectedPieceStyle.white
         } : undefined
       };
-      joinRoom(roomId.trim().toUpperCase(), playerData);
+      joinRoom(joinRoomId.trim().toUpperCase(), playerData);
     }
   };
 
@@ -102,7 +97,9 @@ const MainMenu: React.FC = () => {
 
   // FIXED: Better copy room link function
   const copyRoomLink = async () => {
-    const roomLink = `${window.location.origin}?room=${createdRoomId}`;
+    if (!roomId) return;
+    
+    const roomLink = `${window.location.origin}?room=${roomId}`;
     try {
       await navigator.clipboard.writeText(roomLink);
       setCopySuccess(true);
@@ -130,12 +127,14 @@ const MainMenu: React.FC = () => {
 
   // FIXED: Better share room link function
   const shareRoomLink = async () => {
-    const roomLink = `${window.location.origin}?room=${createdRoomId}`;
+    if (!roomId) return;
+    
+    const roomLink = `${window.location.origin}?room=${roomId}`;
     if (navigator.share) {
       try {
         await navigator.share({
           title: 'Othello Game - Tham gia phòng chơi',
-          text: `Tham gia phòng Othello của tôi! Mã phòng: ${createdRoomId}`,
+          text: `Tham gia phòng Othello của tôi! Mã phòng: ${roomId}`,
           url: roomLink,
         });
       } catch (err) {
@@ -164,7 +163,7 @@ const MainMenu: React.FC = () => {
         
         {/* FIXED: Room Share Modal with better styling and functionality */}
         <AnimatePresence>
-          {showRoomShare && createdRoomId && (
+          {showRoomShare && roomId && (
             <motion.div
               className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
               initial={{ opacity: 0 }}
@@ -207,10 +206,10 @@ const MainMenu: React.FC = () => {
                   <div className="bg-black/40 rounded-xl p-6 mb-6 border border-white/20">
                     <p className="text-sm text-gray-400 mb-2">Mã phòng:</p>
                     <p className="text-4xl font-bold font-mono text-yellow-400 tracking-wider">
-                      {createdRoomId}
+                      {roomId}
                     </p>
                     <p className="text-xs text-gray-400 mt-2">
-                      Link: {window.location.origin}?room={createdRoomId}
+                      Link: {window.location.origin}?room={roomId}
                     </p>
                   </div>
                   
@@ -415,8 +414,8 @@ const MainMenu: React.FC = () => {
                     </label>
                     <input
                       type="text"
-                      value={roomId}
-                      onChange={(e) => setRoomId(e.target.value.toUpperCase())}
+                      value={joinRoomId}
+                      onChange={(e) => setJoinRoomId(e.target.value.toUpperCase())}
                       placeholder="Nhập mã phòng..."
                       className="w-full px-4 py-3 bg-black/20 text-white placeholder-gray-400 rounded-lg border border-gray-600 focus:border-blue-400 focus:outline-none transition-colors text-center font-mono text-lg"
                       maxLength={6}
@@ -425,16 +424,149 @@ const MainMenu: React.FC = () => {
                   
                   <motion.button
                     type="submit"
-                    disabled={!roomId.trim()}
+                    disabled={!joinRoomId.trim()}
                     className={`
                       w-full py-4 rounded-xl font-bold text-lg transition-all duration-200
-                      ${roomId.trim()
+                      ${joinRoomId.trim()
                         ? 'bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white shadow-lg'
                         : 'bg-gray-600 text-gray-400 cursor-not-allowed'
                       }
                     `}
-                    whileHover={roomId.trim() ? { scale: 1.02 } : {}}
-                    whileTap={roomId.trim() ? { scale: 0.98 } : {}}
+                    whileHover={joinRoomId.trim() ? { scale: 1.02 } : {}}
+                    whileTap={joinRoomId.trim() ? { scale: 0.98 } : {}}
+                  >
+                    🚀 Vào phòng
+                  </motion.button>
+                  
+                  <p className="text-gray-300 text-sm text-center">
+                    Nhập mã phòng 6 số để tham gia game
+                  </p>
+                </motion.form>
+              )}
+
+              {activeTab === 'ai' && (
+                <motion.form
+                  key="ai"
+                  onSubmit={handleCreateAIGame}
+                  className="space-y-4"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <div>
+                    <label className="block text-white font-semibold mb-3">
+                      🎯 Chọn độ khó:
+                    </label>
+                    <div className="space-y-2">
+                      {[
+                        { value: 'easy', label: '😊 Dễ', desc: 'AI đi ngẫu nhiên' },
+                        { value: 'medium', label: '🤔 Trung bình', desc: 'AI ưu tiên góc và cạnh' },
+                        { value: 'hard', label: '😈 Khó', desc: 'AI thông minh và khó đánh bại' }
+                      ].map((difficulty) => (
+                        <motion.button
+                          key={difficulty.value}
+                          type="button"
+                          onClick={() => setSelectedDifficulty(difficulty.value as AIDifficulty)}
+                          className={`
+                            w-full p-3 rounded-lg text-left transition-all duration-200 border-2
+                            ${selectedDifficulty === difficulty.value
+                              ? 'border-yellow-400 bg-yellow-400/20 text-white'
+                              : 'border-gray-600 bg-black/20 text-gray-300 hover:border-gray-500'
+                            }
+                          `}
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                        >
+                          <div className="font-semibold">{difficulty.label}</div>
+                          <div className="text-sm text-gray-400">{difficulty.desc}</div>
+                        </motion.button>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <motion.button
+                    type="submit"
+                    className="w-full py-4 rounded-xl font-bold text-lg bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white shadow-lg transition-all duration-200"
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    🤖 Chơi với AI
+                  </motion.button>
+                  
+                  <p className="text-gray-300 text-sm text-center">
+                    Thử thách bản thân với AI thông minh
+                  </p>
+                </motion.form>
+              )}
+            </AnimatePresence>
+
+            {/* Footer */}
+            <motion.div
+              className="mt-8 text-center text-gray-400 text-sm"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
+            >
+              <p>🎮 Zui zẻ hong quạo 🎮</p>
+              <p className="mt-1">Made by huongcute hehe</p>
+            </motion.div>
+          </motion.div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default MainMenu;-lg transition-all duration-200"
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    🏠 Tạo phòng mới
+                  </motion.button>
+                  
+                  <p className="text-gray-300 text-sm text-center">
+                    Tạo phòng riêng và mời bạn bè cùng chơi
+                  </p>
+                </motion.form>
+              )}
+
+              {activeTab === 'join' && (
+                <motion.form
+                  key="join"
+                  onSubmit={handleJoinRoom}
+                  className="space-y-4"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <div>
+                    <label className="block text-white font-semibold mb-2">
+                      🔑 Mã phòng:
+                    </label>
+                    <input
+                      type="text"
+                      value={joinRoomId}
+                      onChange={(e) => setJoinRoomId(e.target.value.toUpperCase())}
+                      placeholder="Nhập mã phòng..."
+                      className="w-full px-4 py-3 bg-black/20 text-white placeholder-gray-400 rounded-lg border border-gray-600 focus:border-blue-400 focus:outline-none transition-colors text-center font-mono text-lg"
+                      maxLength={6}
+                    />
+                  </div>
+                  
+                  <motion.button
+                    type="submit"
+                    disabled={!joinRoomId.trim()}
+                    className={`
+                      w-full py-4 rounded-xl font-bold text-lg transition-all duration-200
+                      ${joinRoomId.trim()
+                        ? 'bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white shadow-lg'
+                        : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                      }
+                    `}
+                    whileHover={joinRoomId.trim() ? { scale: 1.02 } : {}}
+                    whileTap={joinRoomId.trim() ? { scale: 0.98 } : {}}
                   >
                     🚀 Vào phòng
                   </motion.button>
@@ -776,3 +908,4 @@ const MainMenu: React.FC = () => {
 };
 
 export default MainMenu;
+
