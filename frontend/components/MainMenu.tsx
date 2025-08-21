@@ -7,13 +7,18 @@ import ThemeSelector from './ThemeSelector';
 import PlayerProfile from './PlayerProfile';
 
 const MainMenu: React.FC = () => {
-  const { createRoom, joinRoom, createAIGame } = useGame();
+  const { createRoom, joinRoom, createAIGame, currentRoomId } = useGame();
   const { currentPlayer, logoutPlayer } = useSocket();
   const [activeTab, setActiveTab] = useState<'create' | 'join' | 'ai'>('create');
   const [roomId, setRoomId] = useState('');
   const [selectedDifficulty, setSelectedDifficulty] = useState<AIDifficulty>('medium');
   const [selectedPieceStyle, setSelectedPieceStyle] = useState(PIECE_EMOJI_OPTIONS[0]);
   const [showPieceSelector, setShowPieceSelector] = useState(false);
+  
+  // Room sharing state
+  const [showRoomShare, setShowRoomShare] = useState(false);
+  const [createdRoomId, setCreatedRoomId] = useState('');
+  const [copySuccess, setCopySuccess] = useState(false);
 
   // Auto-fill room ID from URL
   useEffect(() => {
@@ -37,6 +42,14 @@ const MainMenu: React.FC = () => {
       }
     }
   }, [currentPlayer]);
+
+  // Listen for room creation success
+  useEffect(() => {
+    if (currentRoomId && currentRoomId !== createdRoomId) {
+      setCreatedRoomId(currentRoomId);
+      setShowRoomShare(true);
+    }
+  }, [currentRoomId, createdRoomId]);
 
   const handleCreateRoom = (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,6 +96,44 @@ const MainMenu: React.FC = () => {
     }
   };
 
+  // Copy room link to clipboard
+  const copyRoomLink = async () => {
+    const roomLink = `${window.location.origin}?room=${createdRoomId}`;
+    try {
+      await navigator.clipboard.writeText(roomLink);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch (err) {
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = roomLink;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    }
+  };
+
+  // Share room link via Web Share API (mobile)
+  const shareRoomLink = async () => {
+    const roomLink = `${window.location.origin}?room=${createdRoomId}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Othello Game - Tham gia phòng chơi',
+          text: `Tham gia phòng Othello của tôi! Mã phòng: ${createdRoomId}`,
+          url: roomLink,
+        });
+      } catch (err) {
+        copyRoomLink(); // Fallback to copy
+      }
+    } else {
+      copyRoomLink(); // Fallback to copy
+    }
+  };
+
   if (!currentPlayer) {
     return null; // This shouldn't happen if properly authenticated
   }
@@ -91,6 +142,93 @@ const MainMenu: React.FC = () => {
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center p-4">
       <div className="w-full max-w-4xl">
         
+        {/* Room Share Modal */}
+        <AnimatePresence>
+          {showRoomShare && (
+            <motion.div
+              className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <motion.div
+                className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 shadow-2xl border border-white/20 max-w-md w-full"
+                initial={{ scale: 0, rotate: -180 }}
+                animate={{ scale: 1, rotate: 0 }}
+                exit={{ scale: 0, rotate: 180 }}
+                transition={{ 
+                  type: "spring", 
+                  stiffness: 200, 
+                  damping: 15 
+                }}
+              >
+                <div className="text-center text-white">
+                  <motion.div
+                    className="text-4xl mb-4"
+                    animate={{ 
+                      rotate: [0, 10, -10, 10, 0],
+                      scale: [1, 1.1, 1, 1.1, 1]
+                    }}
+                    transition={{ 
+                      duration: 2,
+                      repeat: Infinity,
+                      ease: "easeInOut"
+                    }}
+                  >
+                    🎉
+                  </motion.div>
+                  
+                  <h2 className="text-2xl font-bold mb-2">Phòng đã tạo thành công!</h2>
+                  <p className="text-gray-300 mb-4">Mời bạn bè tham gia bằng cách chia sẻ link hoặc mã phòng</p>
+                  
+                  {/* Room ID Display */}
+                  <div className="bg-black/30 rounded-lg p-4 mb-4">
+                    <p className="text-sm text-gray-300 mb-2">Mã phòng:</p>
+                    <p className="text-3xl font-bold font-mono text-yellow-400">{createdRoomId}</p>
+                  </div>
+                  
+                  {/* Action Buttons */}
+                  <div className="space-y-3">
+                    <motion.button
+                      onClick={shareRoomLink}
+                      className="w-full py-3 bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center space-x-2"
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      <span>📤</span>
+                      <span className="hidden sm:inline">Chia sẻ link</span>
+                      <span className="sm:hidden">Share</span>
+                    </motion.button>
+                    
+                    <motion.button
+                      onClick={copyRoomLink}
+                      className={`w-full py-3 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center space-x-2 ${
+                        copySuccess 
+                          ? 'bg-green-600 text-white' 
+                          : 'bg-white/20 hover:bg-white/30 border border-white/30'
+                      }`}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      <span>{copySuccess ? '✅' : '📋'}</span>
+                      <span>{copySuccess ? 'Đã sao chép!' : 'Sao chép link'}</span>
+                    </motion.button>
+                    
+                    <motion.button
+                      onClick={() => setShowRoomShare(false)}
+                      className="w-full py-2 text-gray-300 hover:text-white transition-colors"
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      Đóng
+                    </motion.button>
+                  </div>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Mobile Layout - Stack vertically */}
         <div className="lg:hidden space-y-6">
           {/* Player Profile on Mobile - Collapsible */}
@@ -112,7 +250,7 @@ const MainMenu: React.FC = () => {
             >
               <div className="text-5xl mb-4">⚫⚪</div>
               <h1 className="text-2xl font-bold text-white mb-2">Othello Game</h1>
-              <p className="text-gray-300 text-sm">Chào mừng {currentPlayer.displayName}! 🎮</p>
+              <p className="text-gray-300 text-sm">Chào mừng {currentPlayer.displayName}!</p>
               
               {/* Theme selector */}
               <div className="flex justify-center mt-4">
@@ -242,7 +380,7 @@ const MainMenu: React.FC = () => {
                 >
                   <div>
                     <label className="block text-white font-semibold mb-2">
-                      🔑 Mã phòng:
+                      🔒 Mã phòng:
                     </label>
                     <input
                       type="text"
@@ -400,7 +538,7 @@ const MainMenu: React.FC = () => {
               ))}
             </div>
 
-            {/* Piece Style Selection */}
+            {/* Piece Style Selection - Desktop */}
             <motion.div
               className="mb-6"
               initial={{ opacity: 0 }}
@@ -459,7 +597,7 @@ const MainMenu: React.FC = () => {
               </div>
             </motion.div>
 
-            {/* Tab Content */}
+            {/* Desktop Tab Content - Same as mobile */}
             <AnimatePresence mode="wait">
               {activeTab === 'create' && (
                 <motion.form
@@ -498,7 +636,7 @@ const MainMenu: React.FC = () => {
                 >
                   <div>
                     <label className="block text-white font-semibold mb-2">
-                      🔑 Mã phòng:
+                      🔒 Mã phòng:
                     </label>
                     <input
                       type="text"
