@@ -9,8 +9,8 @@ import Chat from '../components/Chat';
 import VoiceControls from '../components/VoiceControls';
 
 const GamePage: React.FC = () => {
-  const { gameState, currentTheme, resetGameState } = useGame();
-  const { socket } = useSocket();
+  const { gameState, currentTheme } = useGame();
+  const { socket, currentPlayer } = useSocket();
   const router = useRouter();
   const [gameEndNotification, setGameEndNotification] = useState<{
     show: boolean;
@@ -24,14 +24,26 @@ const GamePage: React.FC = () => {
     isWinner: false
   });
 
-  // Handle back to menu
+  // FIXED: Better back to menu handler
   const handleBackToMenu = () => {
-    // Reset game state
-    if (resetGameState) {
-      resetGameState();
+    try {
+      // Disconnect from current room if connected
+      if (socket && socket.connected) {
+        socket.emit('leaveRoom'); // Make sure backend handles this event
+        socket.disconnect();
+      }
+      
+      // Navigate back to home
+      router.push('/').catch((error) => {
+        console.error('Navigation error:', error);
+        // Force reload as fallback
+        window.location.href = '/';
+      });
+    } catch (error) {
+      console.error('Error returning to menu:', error);
+      // Force reload as fallback
+      window.location.href = '/';
     }
-    // Navigate back to home
-    router.push('/');
   };
 
   // Handle game end notifications (surrender, timeout, normal win/lose)
@@ -150,6 +162,7 @@ const GamePage: React.FC = () => {
     };
   }, [socket]);
 
+  // FIXED: Loading state with better UX
   if (!gameState) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center">
@@ -159,39 +172,53 @@ const GamePage: React.FC = () => {
           animate={{ opacity: 1 }}
         >
           <div className="text-6xl mb-4">⚫⚪</div>
-          <div className="text-xl">Đang tải game...</div>
+          <div className="text-xl mb-4">Đang tải game...</div>
+          
+          {/* FIXED: Add back to menu button even in loading state */}
+          <motion.button
+            onClick={handleBackToMenu}
+            className="px-6 py-3 bg-white/20 hover:bg-white/30 text-white rounded-lg border border-white/30 transition-colors mt-4"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            🏠 Quay lại Menu
+          </motion.button>
         </motion.div>
       </div>
     );
   }
 
-  // Get background class - sử dụng background cố định giống menu
+  // FIXED: Get background class using current theme or fallback
   const getBackgroundClass = () => {
-    // Sử dụng background giống như menu
+    if (currentTheme?.background) {
+      return currentTheme.background;
+    }
+    // Fallback background
     return 'bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900';
   };
 
   return (
     <div className={`min-h-screen p-2 sm:p-4 lg:p-6 ${getBackgroundClass()}`}>
-      {/* Back to Menu Button - Fixed position */}
+      {/* FIXED: Enhanced Back to Menu Button - Always visible and functional */}
       <motion.button
         onClick={handleBackToMenu}
-        className="fixed top-4 left-4 z-40 px-4 py-2 bg-black/50 hover:bg-black/70 text-white rounded-lg border border-white/20 backdrop-blur-sm transition-all duration-200 flex items-center space-x-2"
+        className="fixed top-4 left-4 z-50 px-4 py-2 bg-black/60 hover:bg-black/80 text-white rounded-lg border border-white/30 backdrop-blur-sm transition-all duration-200 flex items-center space-x-2 shadow-lg"
         initial={{ opacity: 0, x: -20 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ delay: 0.3 }}
-        whileHover={{ scale: 1.05 }}
+        whileHover={{ scale: 1.05, y: -2 }}
         whileTap={{ scale: 0.95 }}
+        title="Quay lại màn hình chính"
       >
         <span className="text-lg">🏠</span>
-        <span className="hidden sm:inline">Menu</span>
+        <span className="hidden sm:inline font-medium">Menu</span>
       </motion.button>
 
       {/* Game End Notification */}
       <AnimatePresence>
         {gameEndNotification.show && (
           <motion.div
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -253,17 +280,31 @@ const GamePage: React.FC = () => {
                 {gameEndNotification.message}
               </motion.p>
               
-              <motion.button
-                onClick={() => setGameEndNotification(prev => ({ ...prev, show: false }))}
-                className="px-6 py-2 bg-white/20 hover:bg-white/30 rounded-lg font-semibold transition-colors border border-white/30"
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.7 }}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                Đóng
-              </motion.button>
+              <div className="flex space-x-3">
+                <motion.button
+                  onClick={() => setGameEndNotification(prev => ({ ...prev, show: false }))}
+                  className="flex-1 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg font-semibold transition-colors border border-white/30"
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.7 }}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  Đóng
+                </motion.button>
+                
+                <motion.button
+                  onClick={handleBackToMenu}
+                  className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg font-semibold transition-colors"
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.8 }}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  🏠 Menu
+                </motion.button>
+              </div>
               
               {/* Animated background effects */}
               <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-2xl">
@@ -349,6 +390,24 @@ const GamePage: React.FC = () => {
       
       {/* Voice Controls - Fixed position */}
       <VoiceControls />
+
+      {/* FIXED: Additional floating action button for menu (always visible) */}
+      <motion.div
+        className="fixed bottom-4 right-4 z-40"
+        initial={{ opacity: 0, scale: 0 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ delay: 1 }}
+      >
+        <motion.button
+          onClick={handleBackToMenu}
+          className="p-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-full shadow-lg border border-white/20"
+          whileHover={{ scale: 1.1, rotate: 5 }}
+          whileTap={{ scale: 0.9 }}
+          title="Quay lại Menu"
+        >
+          <span className="text-xl">🏠</span>
+        </motion.button>
+      </motion.div>
     </div>
   );
 };
