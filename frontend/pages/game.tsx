@@ -188,17 +188,26 @@ const GamePage: React.FC = () => {
     );
   }
 
-  // FIXED: Get background class using current theme or fallback
+  // FIXED: Get background class - Always return a valid gradient background
   const getBackgroundClass = () => {
-    if (currentTheme?.background) {
+    // Check if theme exists and has a valid background
+    if (currentTheme?.background && 
+        currentTheme.background !== '' && 
+        !currentTheme.background.includes('white') &&
+        currentTheme.background.includes('bg-')) {
       return currentTheme.background;
     }
-    // Fallback background
+    
+    // Always return a beautiful gradient background as fallback
+    // This matches common game backgrounds and ensures no white background
     return 'bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900';
   };
 
+  // Get the background class once to avoid recalculation
+  const backgroundClass = getBackgroundClass();
+
   return (
-    <div className={`min-h-screen p-2 sm:p-4 lg:p-6 ${getBackgroundClass()}`}>
+    <div className={`min-h-screen p-2 sm:p-4 lg:p-6 ${backgroundClass}`}>
       {/* FIXED: Enhanced Back to Menu Button - Always visible and functional */}
       <motion.button
         onClick={handleBackToMenu}
