@@ -49,10 +49,8 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
   const syncPlayerCoins = (gameState: GameState) => {
     if (!currentPlayer || !socket) return gameState;
     
-    // Find current player in game state and update their coins
     const updatedPlayers = gameState.players.map(player => {
       if (player.id === socket.id && player.isAuthenticated) {
-        // Keep coins from current player (which should be fresh from database)
         return {
           ...player,
           coins: currentPlayer.coins
@@ -67,13 +65,52 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
     };
   };
 
+  // NEW: Listen for room reconnection events
+  useEffect(() => {
+    const handleRoomReconnected = (event: CustomEvent) => {
+      const { roomId: reconnectedRoomId, gameState: reconnectedGameState } = event.detail;
+      console.log('🏠 Room reconnected:', reconnectedRoomId);
+      
+      setRoomId(reconnectedRoomId);
+      const syncedGameState = syncPlayerCoins(reconnectedGameState);
+      setGameState(syncedGameState);
+      
+      // Determine if it's an AI game based on players
+      const hasAIPlayer = reconnectedGameState.players.some((p: any) => p.id === 'AI');
+      setIsAIGame(hasAIPlayer);
+      
+      if (hasAIPlayer) {
+        // Extract AI difficulty from AI player's name
+        const aiPlayer = reconnectedGameState.players.find((p: any) => p.id === 'AI');
+        if (aiPlayer && aiPlayer.displayName) {
+          const difficultyMatch = aiPlayer.displayName.match(/\((EASY|MEDIUM|HARD)\)/);
+          if (difficultyMatch) {
+            setAiDifficulty(difficultyMatch[1].toLowerCase() as AIDifficulty);
+          }
+        }
+      } else {
+        setAiDifficulty(null);
+      }
+      
+      toast.success('Đã kết nối lại phòng game!', {
+        duration: 3000,
+        icon: '🔄'
+      });
+    };
+
+    window.addEventListener('roomReconnected', handleRoomReconnected as EventListener);
+    
+    return () => {
+      window.removeEventListener('roomReconnected', handleRoomReconnected as EventListener);
+    };
+  }, [socket, currentPlayer]);
+
   useEffect(() => {
     if (!socket) return;
 
     // Socket event listeners
     socket.on('roomCreated', (data: { roomId: string; gameState: GameState }) => {
       setRoomId(data.roomId);
-      // Sync coins when room is created
       const syncedGameState = syncPlayerCoins(data.gameState);
       setGameState(syncedGameState);
       setIsAIGame(false);
@@ -83,7 +120,6 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
 
     socket.on('roomJoined', (data: { roomId: string; gameState: GameState }) => {
       setRoomId(data.roomId);
-      // Sync coins when joining room
       const syncedGameState = syncPlayerCoins(data.gameState);
       setGameState(syncedGameState);
       setIsAIGame(false);
@@ -93,7 +129,6 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
 
     socket.on('aiGameCreated', (data: { roomId: string; gameState: GameState; difficulty: AIDifficulty }) => {
       setRoomId(data.roomId);
-      // Sync coins when AI game is created
       const syncedGameState = syncPlayerCoins(data.gameState);
       setGameState(syncedGameState);
       setIsAIGame(true);
@@ -108,7 +143,6 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
             newGameState.gameStatus === 'finished' &&
             (!prevState || !prevState.coinTransactions)) {
           
-          // Find current player's transaction
           const playerTransaction = newGameState.coinTransactions.find(
             transaction => transaction.playerId === socket.id
           );
@@ -119,12 +153,10 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
               playerTransaction.coinChange
             );
             
-            // Refresh player data to get updated coins from database
             if (refreshPlayerData && currentPlayer) {
               refreshPlayerData(currentPlayer.displayName);
             }
             
-            // Show toast notification based on result
             if (playerTransaction.result === 'win') {
               toast.success(message, {
                 duration: 5000,
@@ -162,7 +194,6 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
           }
         }
         
-        // Always sync player coins with current player data
         return syncPlayerCoins(newGameState);
       });
     });
@@ -243,19 +274,15 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
 
   const newGame = () => {
     if (socket && roomId) {
-      // Refresh player data before starting new game
       if (refreshPlayerData && currentPlayer) {
         refreshPlayerData(currentPlayer.displayName);
       }
       
-      // Send AI info if playing with AI
       if (isAIGame && aiDifficulty) {
         socket.emit('newGame', { roomId, isAI: true, difficulty: aiDifficulty });
-        // Clear messages for AI games
         setMessages([]);
       } else {
         socket.emit('newGame', { roomId, isAI: false });
-        // Keep chat history for human vs human games
       }
       toast.success('Ván mới đã được tạo!');
     }
