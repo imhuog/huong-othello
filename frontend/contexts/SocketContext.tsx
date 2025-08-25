@@ -176,13 +176,13 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
           const updatedPlayer: PlayerModel = {
             ...currentPlayer!,
             coins: response.player.coins,
-            stats: response.player.stats ? {
-              gamesPlayed: response.player.gamesPlayed,
-              gamesWon: response.player.gamesWon,
-              gamesLost: response.player.gamesLost,
-              gamesDraw: response.player.gamesDraw,
-              winRate: response.player.gamesPlayed > 0 ? Math.round((response.player.gamesWon / response.player.gamesPlayed) * 100) : 0
-            } : currentPlayer!.stats,
+          stats: response.player.stats ? {
+  gamesPlayed: response.player.stats.gamesPlayed,    // ← SỬA: truy xuất từ stats
+  gamesWon: response.player.stats.gamesWon,          // ← SỬA: truy xuất từ stats
+  gamesLost: response.player.stats.gamesLost,        // ← SỬA: truy xuất từ stats  
+  gamesDraw: response.player.stats.gamesDraw,        // ← SỬA: truy xuất từ stats
+  winRate: response.player.stats.gamesPlayed > 0 ? Math.round((response.player.stats.gamesWon / response.player.stats.gamesPlayed) * 100) : 0
+} : currentPlayer!.stats,
             lastPlayed: response.player.lastPlayed,
           };
           
@@ -372,3 +372,4 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
   );
 
 };
+
