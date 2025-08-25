@@ -126,7 +126,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
 
       // Handle login response - ĐÚNG EVENT NAME
       socketInstance.on('loginResponse', (response: LoginResponse) => {
-        console.log('🔥 Login response received:', response);
+        console.log('📥 Login response received:', response);
         setIsLoggingIn(false);
         
         if (response.success && response.player) {
@@ -167,7 +167,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
         }
       });
 
-      // FIXED: Handle player data response for refresh
+      // NEW: Handle player data response for refresh
       socketInstance.on('playerDataResponse', (response: { success: boolean; player?: PlayerModel; message?: string }) => {
         console.log('📊 Player data response received:', response);
         
@@ -177,14 +177,11 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
             ...currentPlayer!,
             coins: response.player.coins,
             stats: response.player.stats ? {
-              // Use stats object from response.player.stats, not from root level
-              gamesPlayed: response.player.stats.gamesPlayed,
-              gamesWon: response.player.stats.gamesWon,
-              gamesLost: response.player.stats.gamesLost,
-              gamesDraw: response.player.stats.gamesDraw,
-              winRate: response.player.stats.gamesPlayed > 0 
-                ? Math.round((response.player.stats.gamesWon / response.player.stats.gamesPlayed) * 100) 
-                : 0
+              gamesPlayed: response.player.gamesPlayed,
+              gamesWon: response.player.gamesWon,
+              gamesLost: response.player.gamesLost,
+              gamesDraw: response.player.gamesDraw,
+              winRate: response.player.gamesPlayed > 0 ? Math.round((response.player.gamesWon / response.player.gamesPlayed) * 100) : 0
             } : currentPlayer!.stats,
             lastPlayed: response.player.lastPlayed,
           };
