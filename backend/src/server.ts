@@ -9,18 +9,19 @@ import compression from 'compression';
 import { v4 as uuidv4 } from 'uuid';
 import { database, PlayerData } from './database';
 import { PlayerModel, LoginRequest, LoginResponse, getCoinChangeForResult, getResultMessage } from './models/Player';
+import fs from 'fs';
+import path from 'path';
 
 const app = express();
 const server = createServer(app);
-
 
 // Middleware
 app.use(helmet());
 app.use(compression());
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? ['https://huong-othello.vercel.app'] // Updated with your actual domain
-    : ['http://localhost:3000'], // Frontend Next.js port
+    ? ['https://huong-othello.vercel.app'] 
+    : ['http://localhost:3000'],
   credentials: true
 }));
 app.use(express.json());
@@ -28,13 +29,13 @@ app.use(express.json());
 const io = new Server(server, {
   cors: {
     origin: process.env.NODE_ENV === 'production' 
-      ? ['https://huong-othello.vercel.app'] // Updated with your actual domain
-      : ['http://localhost:3000'], // Frontend Next.js port
+      ? ['https://huong-othello.vercel.app'] 
+      : ['http://localhost:3000'],
     methods: ["GET", "POST"]
   }
 });
 
-// Game state interfaces
+// Game state interfaces (unchanged)
 interface Player {
   id: string;
   nickname: string;
@@ -48,13 +49,16 @@ interface Player {
   };
   coins: number;
   isAuthenticated: boolean;
+  // NEW: For reconnection
+  isConnected?: boolean;
+  lastSeen?: number;
 }
 
 interface GameState {
   board: (number | null)[][];
   currentPlayer: 1 | 2;
   players: Player[];
-  gameStatus: 'waiting' | 'playing' | 'finished';
+  gameStatus: 'waiting' | 'playing' | 'finished' | 'paused'; // NEW: paused state
   scores: { 1: number; 2: number };
   validMoves: number[][];
   timeLeft: number;
@@ -62,6 +66,9 @@ interface GameState {
   lastMove?: { row: number; col: number; playerId: string };
   coinTransactions?: { playerId: string; nickname: string; oldCoins: number; newCoins: number; coinChange: number; result: string }[];
   coinsAwarded?: { playerId: string; amount: number; result: 'win' | 'lose' | 'draw' };
+  // NEW: Host management
+  hostId?: string;
+  pausedAt?: number;
 }
 
 interface Room {
@@ -72,6 +79,10 @@ interface Room {
   aiDifficulty?: AIDifficulty;
   createdAt: number;
   lastActivity: number;
+  // NEW: Persistence and host management
+  hostId: string; // Original room creator
+  isPersistent: boolean; // Whether room survives disconnections
+  expiresAt?: number; // Auto-expire inactive rooms
 }
 
 interface ChatMessage {
@@ -82,62 +93,160 @@ interface ChatMessage {
   timestamp: number;
 }
 
-// NEW: Voice chat interfaces
 interface VoiceOffer {
   from: string;
   to: string;
-  offer: any; // WebRTC offer object
+  offer: any;
   nickname: string;
 }
 
 interface VoiceAnswer {
   from: string;
   to: string;
-  answer: any; // WebRTC answer object
+  answer: any;
 }
 
 interface VoiceIceCandidate {
   from: string;
   to: string;
-  candidate: any; // WebRTC ICE candidate object
+  candidate: any;
 }
+
 enum AIDifficulty {  
   EASY = 'easy',
   MEDIUM = 'medium',
   HARD = 'hard'
 }
 
-// Store rooms and authenticated players
-const rooms = new Map<string, Room>();
+// NEW: Persistent storage for rooms
+class RoomStorage {
+  private roomsPath: string;
+
+  constructor() {
+    this.roomsPath = path.join(process.cwd(), 'data', 'rooms.json');
+    this.ensureDirectoryExists();
+  }
+
+  private ensureDirectoryExists(): void {
+    const dir = path.dirname(this.roomsPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+  }
+
+  saveRooms(rooms: Map<string, Room>): void {
+    try {
+      const roomsData = Array.from(rooms.entries()).map(([id, room]) => ({
+        id,
+        ...room,
+        // Don't save socket connections, only room data
+        gameState: {
+          ...room.gameState,
+          players: room.gameState.players.map(p => ({
+            ...p,
+            isConnected: false // Reset connection status on save
+          }))
+        }
+      }));
+      
+      fs.writeFileSync(this.roomsPath, JSON.stringify(roomsData, null, 2));
+      console.log(`💾 Saved ${roomsData.length} rooms to disk`);
+    } catch (error) {
+      console.error('❌ Error saving rooms:', error);
+    }
+  }
+
+  loadRooms(): Map<string, Room> {
+    try {
+      if (!fs.existsSync(this.roomsPath)) {
+        return new Map();
+      }
+
+      const data = fs.readFileSync(this.roomsPath, 'utf8');
+      const roomsData = JSON.parse(data);
+      const rooms = new Map<string, Room>();
+
+      const now = Date.now();
+      const ROOM_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
+
+      for (const roomData of roomsData) {
+        // Skip expired rooms
+        if (roomData.expiresAt && now > roomData.expiresAt) {
+          console.log(`🗑️ Skipping expired room: ${roomData.id}`);
+          continue;
+        }
+
+        // Skip rooms inactive for too long
+        if (now - roomData.lastActivity > ROOM_EXPIRY) {
+          console.log(`🗑️ Skipping stale room: ${roomData.id}`);
+          continue;
+        }
+
+        rooms.set(roomData.id, roomData);
+      }
+
+      console.log(`💿 Loaded ${rooms.size} rooms from disk`);
+      return rooms;
+    } catch (error) {
+      console.error('❌ Error loading rooms:', error);
+      return new Map();
+    }
+  }
+
+  deleteRoom(roomId: string): void {
+    try {
+      const rooms = this.loadRooms();
+      rooms.delete(roomId);
+      this.saveRooms(rooms);
+    } catch (error) {
+      console.error('❌ Error deleting room:', error);
+    }
+  }
+}
+
+// Initialize storage
+const roomStorage = new RoomStorage();
+
+// Load existing rooms on startup
+const rooms = roomStorage.loadRooms();
 const roomTimers = new Map<string, NodeJS.Timeout>();
-const authenticatedPlayers = new Map<string, PlayerModel>(); // socketId -> PlayerModel
+const authenticatedPlayers = new Map<string, PlayerModel>();
+const voiceRooms = new Map<string, Set<string>>();
+// NEW: Track socket to room mapping for reconnection
+const socketToRoom = new Map<string, string>();
+const playerToSocket = new Map<string, string>(); // nickname -> socketId
 
-// NEW: Store voice chat participants per room
-const voiceRooms = new Map<string, Set<string>>(); // roomId -> Set of socketIds
+// Save rooms periodically
+setInterval(() => {
+  roomStorage.saveRooms(rooms);
+}, 5 * 60 * 1000); // Save every 5 minutes
 
-// Room cleanup - Remove inactive rooms every 30 minutes
+// Enhanced room cleanup - Remove inactive rooms every 30 minutes
 setInterval(() => {
   const now = Date.now();
   const ROOM_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+  const ROOM_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours max
 
   for (const [roomId, room] of rooms.entries()) {
-    if (now - room.lastActivity > ROOM_TIMEOUT) {
-      console.log(`🧹 Cleaning up inactive room: ${roomId}`);
+    const shouldDelete = 
+      (now - room.lastActivity > ROOM_TIMEOUT) || // Inactive
+      (room.expiresAt && now > room.expiresAt) || // Expired
+      (room.gameState.players.length === 0); // Empty
+
+    if (shouldDelete) {
+      console.log(`🧹 Cleaning up room: ${roomId}`);
       
-      // Clear timer if exists
       if (roomTimers.has(roomId)) {
         clearInterval(roomTimers.get(roomId)!);
         roomTimers.delete(roomId);
       }
 
-      // Remove voice room
       voiceRooms.delete(roomId);
-      
-      // Remove room
       rooms.delete(roomId);
+      roomStorage.deleteRoom(roomId);
     }
   }
-}, 30 * 60 * 1000); // Run every 30 minutes
+}, 30 * 60 * 1000);
 
 // Helper function to create Player from database data
 function createPlayerFromData(socketId: string, playerData: PlayerData, emoji: string, pieceEmoji?: any): Player {
@@ -149,11 +258,113 @@ function createPlayerFromData(socketId: string, playerData: PlayerData, emoji: s
     isReady: false,
     coins: playerData.coins,
     pieceEmoji: pieceEmoji,
-    isAuthenticated: true
+    isAuthenticated: true,
+    isConnected: true,
+    lastSeen: Date.now()
   };
 }
 
-// Helper function to award coins and update database
+// NEW: Handle player reconnection to existing room
+function handlePlayerReconnection(socket: any, playerModel: PlayerModel): string | null {
+  // Look for rooms where this player was playing
+  for (const [roomId, room] of rooms.entries()) {
+    const existingPlayer = room.gameState.players.find(
+      p => p.nickname === playerModel.nickname.toLowerCase()
+    );
+
+    if (existingPlayer) {
+      console.log(`🔄 Player ${playerModel.displayName} reconnecting to room ${roomId}`);
+      
+      // Update player connection info
+      existingPlayer.id = socket.id;
+      existingPlayer.isConnected = true;
+      existingPlayer.lastSeen = Date.now();
+      existingPlayer.coins = playerModel.coins; // Update coins from database
+      
+      // Update mappings
+      socketToRoom.set(socket.id, roomId);
+      playerToSocket.set(playerModel.nickname.toLowerCase(), socket.id);
+      
+      // Join socket to room
+      socket.join(roomId);
+      
+      // Resume game if it was paused
+      if (room.gameState.gameStatus === 'paused') {
+        const allPlayersConnected = room.gameState.players.every(p => 
+          p.id === 'AI' || p.isConnected
+        );
+        
+        if (allPlayersConnected) {
+          room.gameState.gameStatus = 'playing';
+          console.log(`▶️ Resuming game in room ${roomId}`);
+          
+          // Restart timer if it's player's turn
+          const currentPlayerObj = room.gameState.players.find(p => 
+            p.color === (room.gameState.currentPlayer === 1 ? 'black' : 'white')
+          );
+          
+          if (currentPlayerObj && currentPlayerObj.isConnected && currentPlayerObj.id !== 'AI') {
+            startTimer(roomId);
+          }
+        }
+      }
+      
+      updateRoomActivity(roomId);
+      return roomId;
+    }
+  }
+  
+  return null;
+}
+
+// NEW: Pause game when player disconnects
+function handlePlayerDisconnection(socketId: string): void {
+  const roomId = socketToRoom.get(socketId);
+  if (!roomId) return;
+
+  const room = rooms.get(roomId);
+  if (!room) return;
+
+  const player = room.gameState.players.find(p => p.id === socketId);
+  if (!player) return;
+
+  console.log(`⏸️ Player ${player.displayName} disconnected from room ${roomId}`);
+  
+  // Mark player as disconnected but don't remove them
+  player.isConnected = false;
+  player.lastSeen = Date.now();
+  
+  // Pause the game if it's active and not AI game
+  if (room.gameState.gameStatus === 'playing' && !room.isAIGame) {
+    room.gameState.gameStatus = 'paused';
+    room.gameState.pausedAt = Date.now();
+    
+    // Clear timer
+    if (roomTimers.has(roomId)) {
+      clearInterval(roomTimers.get(roomId)!);
+      roomTimers.delete(roomId);
+    }
+    
+    console.log(`⏸️ Game paused in room ${roomId} due to player disconnect`);
+  }
+  
+  // Clean up mappings
+  socketToRoom.delete(socketId);
+  playerToSocket.delete(player.nickname);
+  
+  // Set expiry for room cleanup (longer for human games)
+  if (!room.expiresAt) {
+    room.expiresAt = Date.now() + (room.isAIGame ? 1 * 60 * 60 * 1000 : 6 * 60 * 60 * 1000); // 1h for AI, 6h for human
+  }
+  
+  updateRoomActivity(roomId);
+  io.to(roomId).emit('gameStateUpdate', room.gameState);
+  
+  // Save room state
+  roomStorage.saveRooms(rooms);
+}
+
+// Helper function to award coins and update database (unchanged)
 function awardCoinsToPlayers(room: Room): void {
   if (room.gameState.gameStatus !== 'finished') return;
   
@@ -164,7 +375,6 @@ function awardCoinsToPlayers(room: Room): void {
   let player1Result: 'win' | 'lose' | 'draw';
   let player2Result: 'win' | 'lose' | 'draw';
   
-  // Determine results
   if (scores[1] > scores[2]) {
     player1Result = 'win';
     player2Result = 'lose';
@@ -178,12 +388,10 @@ function awardCoinsToPlayers(room: Room): void {
   
   const coinTransactions: any[] = [];
   
-  // Update player 1 (chỉ nếu là human player và authenticated)
   if (player1 && player1.id !== 'AI' && player1.isAuthenticated) {
     const coinChange = getCoinChangeForResult(player1Result);
     const updatedPlayerData = database.updatePlayerCoins(player1.displayName, coinChange, player1Result);
     
-    // Update player coins in room
     player1.coins = updatedPlayerData.coins;
     
     coinTransactions.push({
@@ -195,7 +403,6 @@ function awardCoinsToPlayers(room: Room): void {
       result: player1Result
     });
 
-    // Set coinsAwarded for the player who won (or got coins from draw)
     if (coinChange > 0) {
       room.gameState.coinsAwarded = {
         playerId: player1.id,
@@ -207,12 +414,10 @@ function awardCoinsToPlayers(room: Room): void {
     console.log(`Player ${player1.displayName} ${player1Result}: ${coinChange >= 0 ? '+' : ''}${coinChange} coins. Total: ${updatedPlayerData.coins}`);
   }
   
-  // Update player 2 (chỉ nếu là human player và authenticated)
   if (player2 && player2.id !== 'AI' && player2.isAuthenticated) {
     const coinChange = getCoinChangeForResult(player2Result);
     const updatedPlayerData = database.updatePlayerCoins(player2.displayName, coinChange, player2Result);
     
-    // Update player coins in room
     player2.coins = updatedPlayerData.coins;
     
     coinTransactions.push({
@@ -224,8 +429,6 @@ function awardCoinsToPlayers(room: Room): void {
       result: player2Result
     });
 
-    // Set coinsAwarded for the player who won (or got more coins from draw)
-    // If both players get coins (draw), prioritize the one with higher amount or player2
     if (coinChange > 0 && (!room.gameState.coinsAwarded || coinChange >= room.gameState.coinsAwarded.amount)) {
       room.gameState.coinsAwarded = {
         playerId: player2.id,
@@ -236,18 +439,12 @@ function awardCoinsToPlayers(room: Room): void {
     console.log(`Player ${player2.displayName} ${player2Result}: ${coinChange >= 0 ? '+' : ''}${coinChange} coins. Total: ${updatedPlayerData.coins}`);
   }
   
-  // Set coin transactions info
   room.gameState.coinTransactions = coinTransactions;
 }
 
-// NEW: Helper functions for voice chat
+// Voice chat helper functions (unchanged)
 function getPlayerRoom(socketId: string): string | null {
-  for (const [roomId, room] of rooms.entries()) {
-    if (room.gameState.players.some(p => p.id === socketId)) {
-      return roomId;
-    }
-  }
-  return null;
+  return socketToRoom.get(socketId) || null;
 }
 
 function notifyVoiceParticipants(roomId: string, event: string, data: any, excludeSocketId?: string) {
@@ -272,7 +469,6 @@ class OthelloGame {
   static createEmptyBoard(): (number | null)[][] {
     const board = Array(8).fill(null).map(() => Array(8).fill(null));
     
-    // Initial setup
     board[3][3] = 2; // White
     board[3][4] = 1; // Black
     board[4][3] = 1; // Black
@@ -474,7 +670,6 @@ function generateRoomId(): string {
   const maxAttempts = 10;
   
   do {
-    // Generate 6 character room ID with better randomness
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     roomId = '';
     for (let i = 0; i < 6; i++) {
@@ -490,7 +685,7 @@ function generateRoomId(): string {
   return roomId;
 }
 
-function createInitialGameState(): GameState {
+function createInitialGameState(hostId?: string): GameState {
   return {
     board: OthelloGame.createEmptyBoard(),
     currentPlayer: 1,
@@ -498,7 +693,8 @@ function createInitialGameState(): GameState {
     gameStatus: 'waiting',
     scores: { 1: 2, 2: 2 },
     validMoves: OthelloGame.getValidMoves(OthelloGame.createEmptyBoard(), 1),
-    timeLeft: 30
+    timeLeft: 30,
+    hostId: hostId
   };
 }
 
@@ -506,6 +702,10 @@ function updateRoomActivity(roomId: string): void {
   const room = rooms.get(roomId);
   if (room) {
     room.lastActivity = Date.now();
+    // Save room state periodically
+    if (Math.random() < 0.1) { // 10% chance to save on each activity
+      roomStorage.saveRooms(rooms);
+    }
   }
 }
 
@@ -1321,3 +1521,4 @@ server.listen(PORT, () => {
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 CORS enabled for: ${process.env.NODE_ENV === 'production' ? 'https://huong-othello.vercel.app' : 'http://localhost:3000'}`);
 });
+
