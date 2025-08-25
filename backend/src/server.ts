@@ -86,20 +86,20 @@ interface ChatMessage {
 interface VoiceOffer {
   from: string;
   to: string;
-  offer: RTCSessionDescriptionInit;
+  offer: any; // WebRTC offer object
   nickname: string;
 }
 
 interface VoiceAnswer {
   from: string;
   to: string;
-  answer: RTCSessionDescriptionInit;
+  answer: any; // WebRTC answer object
 }
 
 interface VoiceIceCandidate {
   from: string;
   to: string;
-  candidate: RTCIceCandidateInit;
+  candidate: any; // WebRTC ICE candidate object
 }
 enum AIDifficulty {  
   EASY = 'easy',
