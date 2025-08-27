@@ -1,15 +1,100 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useGame } from '../contexts/GameContext';
 import { useSocket } from '../contexts/SocketContext';
 import Board from '../components/Board';
 import GameInfo from '../components/GameInfo';
 import Chat from '../components/Chat';
-import VoiceControls from '../components/VoiceControls'; // NEW: Import VoiceControls
+import VoiceControls from '../components/VoiceControls';
+import toast from 'react-hot-toast';
 
 const GamePage: React.FC = () => {
-  const { gameState, currentTheme, surrender, isSurrendering, isAIGame } = useGame();
-  const { socket, currentPlayer } = useSocket();
+  const { gameState, currentTheme, isAIGame, newGame } = useGame();
+  const { socket, currentPlayer, refreshPlayerData } = useSocket();
+
+  // Handle game reset after surrender
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleGameReset = () => {
+      // Refresh player data to ensure coins are up to date
+      if (refreshPlayerData && currentPlayer) {
+        refreshPlayerData(currentPlayer.displayName);
+      }
+
+      toast.success('Ván mới đã được tạo sau khi đầu hàng!', {
+        duration: 3000,
+        icon: '🎮',
+        style: {
+          background: 'linear-gradient(135deg, #10b981, #059669)',
+          color: 'white',
+          fontWeight: 'bold',
+          border: '2px solid #059669',
+        },
+      });
+    };
+
+    // Listen for surrender-related game state changes
+    const handleSurrenderComplete = (data: any) => {
+      console.log('🏳️ Surrender completed, game will reset');
+      
+      // Auto-start new game after surrender (optional)
+      setTimeout(() => {
+        if (gameState?.gameStatus === 'finished' && gameState.surrenderedBy) {
+          console.log('🔄 Auto-creating new game after surrender...');
+          newGame();
+        }
+      }, 2000); // Wait 2 seconds before auto-creating new game
+    };
+
+    socket.on('gameReset', handleGameReset);
+    socket.on('surrenderComplete', handleSurrenderComplete);
+
+    return () => {
+      socket.off('gameReset', handleGameReset);
+      socket.off('surrenderComplete', handleSurrenderComplete);
+    };
+  }, [socket, currentPlayer, refreshPlayerData, gameState, newGame]);
+
+  // Monitor game state changes for surrender handling
+  useEffect(() => {
+    if (gameState?.gameStatus === 'finished' && gameState.surrenderedBy) {
+      console.log('🏳️ Game ended by surrender:', gameState.surrenderedBy);
+      
+      // Show surrender result message
+      const surrenderingPlayer = gameState.players.find(p => p.id === gameState.surrenderedBy);
+      const winningPlayer = gameState.players.find(p => p.id === gameState.winnerId);
+      
+      if (surrenderingPlayer && winningPlayer) {
+        const isCurrentPlayerWinner = socket?.id === gameState.winnerId;
+        const isCurrentPlayerSurrendered = socket?.id === gameState.surrenderedBy;
+        
+        if (isCurrentPlayerSurrendered) {
+          toast.error(`Bạn đã đầu hàng! ${winningPlayer.displayName} thắng.`, {
+            duration: 5000,
+            icon: '🏳️',
+            style: {
+              background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+              color: 'white',
+              fontWeight: 'bold',
+              border: '2px solid #dc2626',
+            },
+          });
+        } else if (isCurrentPlayerWinner) {
+          toast.success(`${surrenderingPlayer.displayName} đã đầu hàng! Bạn thắng!`, {
+            duration: 5000,
+            icon: '🏆',
+            style: {
+              background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
+              color: 'white',
+              fontWeight: 'bold',
+              border: '2px solid #f59e0b',
+            },
+          });
+        }
+      }
+    }
+  }, [gameState?.gameStatus, gameState?.surrenderedBy, gameState?.winnerId, socket?.id]);
 
   if (!gameState) {
     return (
@@ -26,70 +111,11 @@ const GamePage: React.FC = () => {
     );
   }
 
-  // Check if surrender button should be shown
-  const shouldShowSurrenderButton = () => {
-    if (!gameState || !socket || !currentPlayer) return false;
-    if (gameState.gameStatus !== 'playing') return false;
-    if (isAIGame) return false; // No surrender in AI games
-    if (gameState.players.length < 2) return false;
-    if (currentPlayer.coins < 10) return false;
-    
-    return true;
-  };
-
-  // NEW: Surrender Button Component
-  const SurrenderButton = () => {
-    if (!shouldShowSurrenderButton()) return null;
-
-    return (
-      <motion.button
-        onClick={surrender}
-        disabled={isSurrendering}
-        className={`
-          px-4 py-2 rounded-lg font-semibold text-sm transition-all duration-200
-          ${isSurrendering 
-            ? 'bg-gray-400 text-gray-700 cursor-not-allowed' 
-            : 'bg-red-500 hover:bg-red-600 text-white shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95'
-          }
-          border border-red-600/30
-        `}
-        whileHover={!isSurrendering ? { scale: 1.05 } : undefined}
-        whileTap={!isSurrendering ? { scale: 0.95 } : undefined}
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-      >
-        {isSurrendering ? (
-          <>
-            <span className="inline-block animate-spin mr-2">⏳</span>
-            Đang xử lý...
-          </>
-        ) : (
-          <>
-            🏳️ Đầu hàng (-10 xu)
-          </>
-        )}
-      </motion.button>
-    );
-  };
-
   return (
     <div className="min-h-screen p-2 sm:p-4 lg:p-6">
       <div className="max-w-7xl mx-auto">
         {/* Mobile & Tablet Layout - Stack vertically */}
         <div className="xl:hidden space-y-4 sm:space-y-6">
-          {/* NEW: Surrender Button - Mobile/Tablet (Top) */}
-          {shouldShowSurrenderButton() && (
-            <motion.div 
-              className="flex justify-center"
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-            >
-              <SurrenderButton />
-            </motion.div>
-          )}
-
           {/* Game Board - Top on mobile/tablet */}
           <motion.div
             className={`flex items-center justify-center rounded-2xl p-4 sm:p-6 shadow-2xl ${currentTheme.background} border border-white/10`}
@@ -114,24 +140,12 @@ const GamePage: React.FC = () => {
         <div className="hidden xl:grid xl:grid-cols-5 gap-8 min-h-screen">
           {/* Game Info - Left Column (2/5 width) */}
           <motion.div
-            className="xl:col-span-2 flex flex-col justify-start space-y-6"
+            className="xl:col-span-2 flex flex-col justify-start"
             initial={{ opacity: 0, x: -50 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5 }}
           >
             <GameInfo />
-            
-            {/* NEW: Surrender Button - Desktop (Bottom of left column) */}
-            {shouldShowSurrenderButton() && (
-              <motion.div 
-                className="flex justify-center"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.3 }}
-              >
-                <SurrenderButton />
-              </motion.div>
-            )}
           </motion.div>
 
           {/* Game Board - Right Column (3/5 width) */}
@@ -149,23 +163,29 @@ const GamePage: React.FC = () => {
       {/* Chat Component - Fixed position */}
       <Chat />
       
-      {/* NEW: Voice Controls - Fixed position */}
+      {/* Voice Controls - Fixed position */}
       <VoiceControls />
 
-      {/* NEW: Surrender Warning Overlay (if player has less than 10 coins) */}
-      {gameState.gameStatus === 'playing' && !isAIGame && gameState.players.length >= 2 && currentPlayer && currentPlayer.coins < 10 && (
+      {/* Surrender Notification Overlay (if needed for additional UI feedback) */}
+      {gameState.gameStatus === 'finished' && gameState.surrenderedBy && (
         <motion.div
-          className="fixed bottom-4 right-4 bg-yellow-500/90 text-black px-4 py-2 rounded-lg shadow-lg max-w-xs z-50"
-          initial={{ opacity: 0, x: 100 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.3 }}
+          className="fixed inset-0 bg-black/30 flex items-center justify-center z-40 pointer-events-none"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
         >
-          <div className="text-sm font-semibold">
-            ⚠️ Không đủ xu để đầu hàng
-          </div>
-          <div className="text-xs mt-1">
-            Bạn cần ít nhất 10 xu để có thể đầu hàng
-          </div>
+          <motion.div
+            className="bg-white/10 backdrop-blur-md rounded-2xl p-6 text-white text-center border border-white/20"
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.8, opacity: 0 }}
+          >
+            <div className="text-4xl mb-4">🏳️</div>
+            <div className="text-lg font-semibold mb-2">Trận đấu kết thúc</div>
+            <div className="text-sm text-gray-300">
+              {gameState.players.find(p => p.id === gameState.surrenderedBy)?.displayName} đã đầu hàng
+            </div>
+          </motion.div>
         </motion.div>
       )}
     </div>
