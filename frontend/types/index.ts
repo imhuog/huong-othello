@@ -157,6 +157,9 @@ export interface GameState {
   winnerId?: string;
   coinTransactions?: CoinTransaction[]; // Thêm thông tin giao dịch xu
   coinsAwarded?: CoinsAwarded; // Thêm thuộc tính này để fix lỗi
+  // NEW: Surrender related fields
+  surrenderedBy?: string; // playerId who surrendered
+  surrenderReason?: string;
 }
 
 export interface Player {
@@ -236,7 +239,7 @@ export interface PlayerModel {
   isAuthenticated: boolean;
   lastPlayed?: string;
   createdAt?: string;
-    isNewPlayer?: boolean; // Thêm dòng này
+  isNewPlayer?: boolean; // Thêm dòng này
 }
 
 // Danh sách emoji có sẵn cho avatar
@@ -252,28 +255,28 @@ export const AVAILABLE_EMOJIS = [
   '😱', '😖', '😣', '😞', '😓', '😩', '😫', '🥱', '😤', '😡',
   '😠', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺',
   '👻', '👽', '👾', '🤖', '🎃', '😺', '😸', '😹', '😻', '😼',
-  '😽', '🙀', '😿', '😾', '👋', '🤚', '🖐️', '✋', '🖖', '👌',
+  '😽', '🙀', '😿', '😾', '💋', '🤚', '🖐️', '✋', '🖖', '👌',
 ];
 
 // Danh sách các cặp emoji cho quân cờ
 export const PIECE_EMOJI_OPTIONS = [
   { name: 'Cổ điển', black: '⚫', white: '⚪' },
-{ name: 'Đỏ Xanh', black: '🔴', white: '🔵' },
-  { name: 'Động vật', black: '🐯', white: '🐑' },
-{ name: 'Animal', black: '🐰', white: '🐳' },
+  { name: 'Đỏ Xanh', black: '🔴', white: '🔵' },
+  { name: 'Động vật', black: '🯅', white: '🐱' },
+  { name: 'Animal', black: '🐰', white: '🐳' },
   { name: 'Trái cây', black: '🍇', white: '🥥' },
-{ name: 'Hoa quả', black: '🍓', white: '🍊' },
-{ name: 'Caro', black: '❌', white: '⭕' },
-{ name: 'Tan vỡ', black: '💔', white: '🙅' },
+  { name: 'Hoa quả', black: '🍓', white: '🍊' },
+  { name: 'Caro', black: '❌', white: '⭕' },
+  { name: 'Tan vỡ', black: '💔', white: '🙅' },
   { name: 'Hoa', black: '🌺', white: '🌼' },
-  { name: 'Thể thao', black: '⚽', white: '🏐' },
+  { name: 'Thể thao', black: '⚽', white: '🏀' },
   { name: 'Âm nhạc', black: '🎵', white: '🎶' },
   { name: 'Giàu có', black: '💎', white: '💸' },
   { name: 'Thực phẩm', black: '🍫', white: '🥛' },
   { name: 'Giao thông', black: '🚗', white: '🚕' },
   { name: 'Vũ trụ', black: '🌑', white: '🌕' },
- { name: 'Mặt trăng ôm mặt trời', black: '🌜', white: '🌞' },
-{ name: 'Thời tiết', black: '🌤️', white: '⛈️' },
+  { name: 'Mặt trăng ôm mặt trời', black: '🌜', white: '🌞' },
+  { name: 'Thời tiết', black: '🌤️', white: '⛈️' },
   { name: 'Biểu tượng', black: '❤️', white: '💙' },
   { name: 'Hình học', black: '⬛', white: '⬜' },
   { name: 'Ma thuật', black: '🔮', white: '💫' },
