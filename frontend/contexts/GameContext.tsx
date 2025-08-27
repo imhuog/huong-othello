@@ -363,7 +363,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
     }
 
     // Emit surrender event to server
-    socket.emit('surrenderGame', { roomId });
+  socket.emit('surrenderRequest', roomId);
   };
 
   return (
