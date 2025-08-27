@@ -244,9 +244,15 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
       socketInstance.on('surrenderRequested', (data: { playerId: string; playerName: string }) => {
         console.log('🏳️ Surrender requested by:', data.playerName);
         
-        toast.info(`${data.playerName} đã yêu cầu đầu hàng`, {
+        toast(`${data.playerName} đã yêu cầu đầu hàng`, {
           duration: 3000,
-          icon: '🏳️'
+          icon: '🏳️',
+          style: {
+            background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+            color: 'white',
+            fontWeight: 'bold',
+            border: '2px solid #d97706',
+          },
         });
       });
 
