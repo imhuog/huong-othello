@@ -33,7 +33,7 @@ const io = new Server(server, {
   }
 });
 
-// Game state interfaces (unchanged)
+// Game state interfaces
 interface Player {
   id: string;
   nickname: string;
@@ -64,6 +64,9 @@ interface GameState {
   lastMove?: { row: number; col: number; playerId: string };
   coinTransactions?: { playerId: string; nickname: string; oldCoins: number; newCoins: number; coinChange: number; result: string }[];
   coinsAwarded?: { playerId: string; amount: number; result: 'win' | 'lose' | 'draw' };
+  // NEW: Surrender related fields
+  surrenderedBy?: string; // playerId who surrendered
+  surrenderReason?: string;
 }
 
 interface Room {
@@ -298,6 +301,61 @@ function awardCoinsToPlayers(room: Room): void {
   }
   
   room.gameState.coinTransactions = coinTransactions;
+}
+
+// NEW: Handle surrender and award coins
+function handleSurrender(room: Room, surrenderingPlayerId: string): void {
+  const surrenderingPlayer = room.gameState.players.find(p => p.id === surrenderingPlayerId);
+  const opponentPlayer = room.gameState.players.find(p => p.id !== surrenderingPlayerId && p.id !== 'AI');
+  
+  if (!surrenderingPlayer || !opponentPlayer || !surrenderingPlayer.isAuthenticated || !opponentPlayer.isAuthenticated) {
+    console.error('Cannot handle surrender: invalid players');
+    return;
+  }
+
+  console.log(`🏳️ Handling surrender: ${surrenderingPlayer.displayName} surrenders to ${opponentPlayer.displayName}`);
+  
+  // Handle surrender in database
+  const { surrenderer, opponent } = database.handleSurrender(surrenderingPlayer.displayName, opponentPlayer.displayName);
+  
+  // Update player coins in game state
+  surrenderingPlayer.coins = surrenderer.coins;
+  opponentPlayer.coins = opponent.coins;
+  
+  // Set game as finished
+  room.gameState.gameStatus = 'finished';
+  room.gameState.winnerId = opponentPlayer.id;
+  room.gameState.surrenderedBy = surrenderingPlayerId;
+  room.gameState.surrenderReason = 'Player surrendered';
+  
+  // Create coin transactions for display
+  const coinTransactions = [
+    {
+      playerId: surrenderingPlayer.id,
+      nickname: surrenderingPlayer.displayName,
+      oldCoins: surrenderer.coins + 10,
+      newCoins: surrenderer.coins,
+      coinChange: -10,
+      result: 'lose'
+    },
+    {
+      playerId: opponentPlayer.id,
+      nickname: opponentPlayer.displayName,
+      oldCoins: opponent.coins - 10,
+      newCoins: opponent.coins,
+      coinChange: 10,
+      result: 'win'
+    }
+  ];
+  
+  room.gameState.coinTransactions = coinTransactions;
+  room.gameState.coinsAwarded = {
+    playerId: opponentPlayer.id,
+    amount: 10,
+    result: 'win'
+  };
+  
+  console.log(`Surrender processed: ${surrenderingPlayer.displayName} -10 coins (${surrenderer.coins}), ${opponentPlayer.displayName} +10 coins (${opponent.coins})`);
 }
 
 // Voice chat helper functions (unchanged)
@@ -1080,6 +1138,62 @@ io.on('connection', (socket) => {
     }
   });
 
+  // NEW: Surrender request handler
+  socket.on('surrenderRequest', (roomId: string) => {
+    console.log('🏳️ Surrender request from:', socket.id, 'in room:', roomId);
+    
+    const room = rooms.get(roomId);
+    if (!room) {
+      socket.emit('error', 'Phòng không tồn tại');
+      return;
+    }
+    
+    const surrenderingPlayer = room.gameState.players.find(p => p.id === socket.id);
+    if (!surrenderingPlayer) {
+      socket.emit('error', 'Bạn không ở trong phòng này');
+      return;
+    }
+    
+    if (room.gameState.gameStatus !== 'playing') {
+      socket.emit('error', 'Game chưa bắt đầu hoặc đã kết thúc');
+      return;
+    }
+    
+    // Check if surrendering player has enough coins
+    if (surrenderingPlayer.coins < 10) {
+      socket.emit('error', 'Bạn cần ít nhất 10 xu để đầu hàng');
+      return;
+    }
+    
+    // Cannot surrender in AI game
+    if (room.isAIGame) {
+      socket.emit('error', 'Không thể đầu hàng khi chơi với AI');
+      return;
+    }
+    
+    const opponentPlayer = room.gameState.players.find(p => p.id !== socket.id && p.id !== 'AI');
+    if (!opponentPlayer || !opponentPlayer.isConnected) {
+      socket.emit('error', 'Không tìm thấy đối thủ để đầu hàng');
+      return;
+    }
+    
+    updateRoomActivity(roomId);
+    
+    // Stop timer
+    if (roomTimers.has(roomId)) {
+      clearInterval(roomTimers.get(roomId)!);
+      roomTimers.delete(roomId);
+    }
+    
+    // Handle surrender
+    handleSurrender(room, socket.id);
+    
+    // Broadcast game update
+    io.to(roomId).emit('gameStateUpdate', room.gameState);
+    
+    console.log(`✅ Surrender processed: ${surrenderingPlayer.displayName} surrendered to ${opponentPlayer.displayName}`);
+  });
+
   // Other socket handlers (unchanged)
   socket.on('playerReady', (roomId: string) => {
     const room = rooms.get(roomId);
@@ -1230,7 +1344,6 @@ io.on('connection', (socket) => {
       if (humanPlayerData) {
         humanPlayerData.isReady = true;
         humanPlayerData.color = 'black';
-        humanPlayerData.isConnected = true;
         room.gameState.players = [humanPlayerData, aiPlayer];
       } else {
         room.gameState.players = [aiPlayer];
@@ -1290,6 +1403,90 @@ io.on('connection', (socket) => {
     io.to(data.roomId).emit('newMessage', chatMessage);
   });
 
+  // Voice chat events (unchanged)
+  socket.on('voice-join-room', (roomId: string) => {
+    const playerRoom = getPlayerRoom(socket.id);
+    if (playerRoom !== roomId) {
+      socket.emit('error', 'Bạn không ở trong phòng này');
+      return;
+    }
+
+    if (!voiceRooms.has(roomId)) {
+      voiceRooms.set(roomId, new Set());
+    }
+
+    voiceRooms.get(roomId)?.add(socket.id);
+    console.log(`Player ${socket.id} joined voice room: ${roomId}`);
+
+    // Notify other participants in the voice room
+    notifyVoiceParticipants(roomId, 'voice-user-joined', { 
+      userId: socket.id,
+      totalUsers: voiceRooms.get(roomId)?.size || 0
+    }, socket.id);
+
+    socket.emit('voice-room-joined', {
+      roomId,
+      participants: Array.from(voiceRooms.get(roomId) || []).filter(id => id !== socket.id)
+    });
+  });
+
+  socket.on('voice-leave-room', (roomId: string) => {
+    const voiceRoom = voiceRooms.get(roomId);
+    if (voiceRoom) {
+      voiceRoom.delete(socket.id);
+      
+      if (voiceRoom.size === 0) {
+        voiceRooms.delete(roomId);
+      }
+
+      notifyVoiceParticipants(roomId, 'voice-user-left', { 
+        userId: socket.id,
+        totalUsers: voiceRoom.size
+      }, socket.id);
+    }
+    
+    console.log(`Player ${socket.id} left voice room: ${roomId}`);
+  });
+
+  socket.on('voice-offer', (data: VoiceOffer) => {
+    const playerRoom = getPlayerRoom(socket.id);
+    if (!playerRoom || !voiceRooms.get(playerRoom)?.has(data.to)) {
+      socket.emit('error', 'Không thể gửi voice offer');
+      return;
+    }
+
+    io.to(data.to).emit('voice-offer', {
+      from: socket.id,
+      offer: data.offer,
+      nickname: data.nickname
+    });
+  });
+
+  socket.on('voice-answer', (data: VoiceAnswer) => {
+    const playerRoom = getPlayerRoom(socket.id);
+    if (!playerRoom || !voiceRooms.get(playerRoom)?.has(data.to)) {
+      socket.emit('error', 'Không thể gửi voice answer');
+      return;
+    }
+
+    io.to(data.to).emit('voice-answer', {
+      from: socket.id,
+      answer: data.answer
+    });
+  });
+
+  socket.on('voice-ice-candidate', (data: VoiceIceCandidate) => {
+    const playerRoom = getPlayerRoom(socket.id);
+    if (!playerRoom || !voiceRooms.get(playerRoom)?.has(data.to)) {
+      return;
+    }
+
+    io.to(data.to).emit('voice-ice-candidate', {
+      from: socket.id,
+      candidate: data.candidate
+    });
+  });
+
   // UPDATED: Disconnect handling with graceful disconnection
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
@@ -1299,6 +1496,21 @@ io.on('connection', (socket) => {
       console.log(`👋 Player ${disconnectedPlayer.displayName} disconnected`);
     }
     authenticatedPlayers.delete(socket.id);
+    
+    // Clean up voice rooms
+    for (const [roomId, voiceRoom] of voiceRooms.entries()) {
+      if (voiceRoom.has(socket.id)) {
+        voiceRoom.delete(socket.id);
+        notifyVoiceParticipants(roomId, 'voice-user-left', { 
+          userId: socket.id,
+          totalUsers: voiceRoom.size
+        }, socket.id);
+        
+        if (voiceRoom.size === 0) {
+          voiceRooms.delete(roomId);
+        }
+      }
+    }
     
     for (const [roomId, room] of rooms.entries()) {
       const playerIndex = room.gameState.players.findIndex(p => p.id === socket.id);
@@ -1469,6 +1681,6 @@ const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Database loaded with ${database.getPlayerCount()} players`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 CORS enabled for: ${process.env.NODE_ENV === 'production' ? 'https://huong-othello.vercel.app' : 'http://localhost:3000'}`);
 });
