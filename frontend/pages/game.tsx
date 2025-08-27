@@ -1,71 +1,14 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { motion } from 'framer-motion';
 import { useGame } from '../contexts/GameContext';
-import { useSocket } from '../contexts/SocketContext';
 import Board from '../components/Board';
 import GameInfo from '../components/GameInfo';
 import Chat from '../components/Chat';
 import VoiceControls from '../components/VoiceControls';
-import toast from 'react-hot-toast';
+import SurrenderButton from '../components/SurrenderButton'; // NEW: Import SurrenderButton
 
 const GamePage: React.FC = () => {
-  const { gameState, currentTheme, isAIGame, newGame } = useGame();
-  const { socket, currentPlayer, refreshPlayerData } = useSocket();
-
-  // Handle game reset after surrender
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleGameReset = () => {
-      // Refresh player data to ensure coins are up to date
-      if (refreshPlayerData && currentPlayer) {
-        refreshPlayerData(currentPlayer.displayName);
-      }
-
-      toast.success('Ván mới đã được tạo sau khi đầu hàng!', {
-        duration: 3000,
-        icon: '🎮',
-        style: {
-          background: 'linear-gradient(135deg, #10b981, #059669)',
-          color: 'white',
-          fontWeight: 'bold',
-          border: '2px solid #059669',
-        },
-      });
-    };
-
-    // Listen for surrender-related game state changes
-    const handleSurrenderComplete = (data: any) => {
-      console.log('🏳️ Surrender completed, game will reset');
-      
-      // Auto-start new game after surrender (optional)
-      setTimeout(() => {
-        if (gameState?.gameStatus === 'finished') {
-          console.log('🔄 Auto-creating new game after surrender...');
-          newGame();
-        }
-      }, 2000); // Wait 2 seconds before auto-creating new game
-    };
-
-    socket.on('gameReset', handleGameReset);
-    socket.on('surrenderComplete', handleSurrenderComplete);
-
-    return () => {
-      socket.off('gameReset', handleGameReset);
-      socket.off('surrenderComplete', handleSurrenderComplete);
-    };
-  }, [socket, currentPlayer, refreshPlayerData, gameState, newGame]);
-
-  // Monitor game state changes for surrender handling
-  useEffect(() => {
-    // Check if game ended (you can add additional logic here if needed)
-    if (gameState?.gameStatus === 'finished') {
-      console.log('🏁 Game finished');
-      
-      // Additional surrender handling logic can be added here
-      // For now, we'll just log and let the existing game end logic handle it
-    }
-  }, [gameState?.gameStatus, socket?.id]);
+  const { gameState, currentTheme } = useGame();
 
   if (!gameState) {
     return (
@@ -136,6 +79,9 @@ const GamePage: React.FC = () => {
       
       {/* Voice Controls - Fixed position */}
       <VoiceControls />
+      
+      {/* NEW: Surrender Button - Fixed position */}
+      <SurrenderButton />
     </div>
   );
 };
