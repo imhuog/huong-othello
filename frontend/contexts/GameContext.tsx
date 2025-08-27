@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { GameState, ChatMessage, ThemeColors, BOARD_THEMES, AIDifficulty, CoinTransaction, getResultMessage, SurrenderConfirmation } from '../types';
+import { GameState, ChatMessage, ThemeColors, BOARD_THEMES, AIDifficulty, CoinTransaction, getResultMessage } from '../types';
 import { useSocket } from './SocketContext';
 import toast from 'react-hot-toast';
 
@@ -10,8 +10,6 @@ interface GameContextType {
   currentTheme: ThemeColors;
   isAIGame: boolean;
   aiDifficulty: AIDifficulty | null;
-  // NEW: Surrender related states
-  surrenderConfirmation: SurrenderConfirmation;
   
   // Actions
   createRoom: (playerData: { name: string; emoji: string; pieceEmoji?: { black: string; white: string } }) => void;
@@ -22,10 +20,7 @@ interface GameContextType {
   newGame: () => void;
   sendMessage: (message: string) => void;
   setTheme: (theme: ThemeColors) => void;
-  // NEW: Surrender actions
-  showSurrenderDialog: () => void;
-  confirmSurrender: () => void;
-  cancelSurrender: () => void;
+  surrenderGame: () => void; // NEW: Add surrender function
 }
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
@@ -50,8 +45,6 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
   const [currentTheme, setCurrentTheme] = useState<ThemeColors>(BOARD_THEMES[0]);
   const [isAIGame, setIsAIGame] = useState(false);
   const [aiDifficulty, setAiDifficulty] = useState<AIDifficulty | null>(null);
-  // NEW: Surrender state
-  const [surrenderConfirmation, setSurrenderConfirmation] = useState<SurrenderConfirmation>({ show: false });
 
   // Helper function to sync current player coins with game state
   const syncPlayerCoins = (gameState: GameState) => {
@@ -206,63 +199,6 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
       });
     });
 
-    // NEW: Listen for surrender events
-    socket.on('surrenderResult', (data: { 
-      success: boolean; 
-      message?: string; 
-      surrenderPlayer?: any; 
-      winnerPlayer?: any;
-      gameState?: GameState;
-    }) => {
-      if (data.success && data.gameState) {
-        setGameState(syncPlayerCoins(data.gameState));
-        
-        // Refresh player data if current player was involved
-        if (refreshPlayerData && currentPlayer && 
-            (data.surrenderPlayer?.displayName === currentPlayer.displayName || 
-             data.winnerPlayer?.displayName === currentPlayer.displayName)) {
-          refreshPlayerData(currentPlayer.displayName);
-        }
-        
-        // Show appropriate toast based on the result
-        if (data.surrenderPlayer?.displayName === currentPlayer?.displayName) {
-          toast.error(`Bạn đã đầu hàng và bị trừ 10 xu. Xu còn lại: ${data.surrenderPlayer.coins}`, {
-            duration: 5000,
-            style: {
-              background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-              color: 'white',
-              fontWeight: 'bold',
-              border: '2px solid #dc2626',
-            },
-            icon: '🏳️',
-          });
-        } else if (data.winnerPlayer?.displayName === currentPlayer?.displayName) {
-          toast.success(`Đối thủ đã đầu hàng! Bạn được +10 xu. Tổng xu: ${data.winnerPlayer.coins}`, {
-            duration: 5000,
-            style: {
-              background: 'linear-gradient(135deg, #10b981, #059669)',
-              color: 'white',
-              fontWeight: 'bold',
-              border: '2px solid #059669',
-            },
-            icon: '🏆',
-          });
-        } else {
-          toast.success(data.message || 'Có người chơi đã đầu hàng!', {
-            duration: 3000,
-            icon: '🏳️',
-          });
-        }
-      } else {
-        toast.error(data.message || 'Không thể đầu hàng!', {
-          duration: 3000,
-        });
-      }
-      
-      // Hide surrender confirmation dialog
-      setSurrenderConfirmation({ show: false });
-    });
-
     socket.on('newMessage', (message: ChatMessage) => {
       setMessages(prev => [...prev, message]);
     });
@@ -271,10 +207,50 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
       setGameState(prev => prev ? { ...prev, timeLeft } : null);
     });
 
+    // NEW: Listen for surrender events
+    socket.on('playerSurrendered', (data: { surrenderedPlayerId: string; gameState: GameState }) => {
+      console.log('Player surrendered:', data);
+      
+      // Update game state
+      const syncedGameState = syncPlayerCoins(data.gameState);
+      setGameState(syncedGameState);
+      
+      // Show notification
+      const surrenderedPlayer = data.gameState.players.find(p => p.id === data.surrenderedPlayerId);
+      if (surrenderedPlayer) {
+        if (data.surrenderedPlayerId === socket.id) {
+          toast.error('Bạn đã đầu hàng! -10 xu', {
+            duration: 4000,
+            style: {
+              background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+              color: 'white',
+              fontWeight: 'bold',
+              border: '2px solid #dc2626',
+            },
+            icon: '🏳️',
+          });
+        } else {
+          toast.success(`${surrenderedPlayer.displayName} đã đầu hàng! Bạn thắng và nhận +10 xu!`, {
+            duration: 4000,
+            style: {
+              background: 'linear-gradient(135deg, #10b981, #059669)',
+              color: 'white',
+              fontWeight: 'bold',
+              border: '2px solid #059669',
+            },
+            icon: '🏆',
+          });
+        }
+      }
+      
+      // Refresh player data
+      if (refreshPlayerData && currentPlayer) {
+        refreshPlayerData(currentPlayer.displayName);
+      }
+    });
+
     socket.on('error', (errorMessage: string) => {
       toast.error(errorMessage);
-      // Hide surrender confirmation on error
-      setSurrenderConfirmation({ show: false });
     });
 
     return () => {
@@ -282,9 +258,9 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
       socket.off('roomJoined');
       socket.off('aiGameCreated');
       socket.off('gameStateUpdate');
-      socket.off('surrenderResult'); // NEW: Clean up surrender listener
       socket.off('newMessage');
       socket.off('timerUpdate');
+      socket.off('playerSurrendered'); // NEW: Clean up surrender listener
       socket.off('error');
     };
   }, [socket, currentPlayer, refreshPlayerData]);
@@ -367,47 +343,27 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
     toast.success(`Đã chọn theme ${theme.name} ${theme.emoji}`);
   };
 
-  // NEW: Surrender functions
-  const showSurrenderDialog = () => {
-    if (!roomId) return;
-    setSurrenderConfirmation({ show: true, roomId });
-  };
-
-  const confirmSurrender = () => {
+  // NEW: Surrender function
+  const surrenderGame = () => {
     if (!socket || !roomId || !currentPlayer) {
-      toast.error('Không thể đầu hàng lúc này!');
-      setSurrenderConfirmation({ show: false });
+      toast.error('Không thể đầu hàng!');
       return;
     }
 
-    // Check if game is in playing state
+    // Don't allow surrender in AI games
+    if (isAIGame) {
+      toast.error('Không thể đầu hàng khi chơi với AI!');
+      return;
+    }
+
+    // Only allow surrender when game is playing
     if (!gameState || gameState.gameStatus !== 'playing') {
-      toast.error('Chỉ có thể đầu hàng khi game đang diễn ra!');
-      setSurrenderConfirmation({ show: false });
+      toast.error('Chỉ có thể đầu hàng khi đang chơi!');
       return;
     }
 
-    // Check if it's player's turn or if there are valid moves (to prevent surrender abuse)
-    const currentPlayerObj = gameState.players.find(p => p.id === socket.id);
-    if (!currentPlayerObj) {
-      toast.error('Bạn không phải là người chơi trong game này!');
-      setSurrenderConfirmation({ show: false });
-      return;
-    }
-
-    // Emit surrender request
-    socket.emit('surrender', {
-      roomId: roomId,
-      playerId: socket.id
-    });
-
-    toast.loading('Đang xử lý đầu hàng...', {
-      duration: 2000,
-    });
-  };
-
-  const cancelSurrender = () => {
-    setSurrenderConfirmation({ show: false });
+    // Emit surrender event to server
+    socket.emit('surrenderGame', { roomId });
   };
 
   return (
@@ -419,7 +375,6 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
         currentTheme,
         isAIGame,
         aiDifficulty,
-        surrenderConfirmation, // NEW
         createRoom,
         joinRoom,
         createAIGame,
@@ -428,9 +383,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
         newGame,
         sendMessage,
         setTheme,
-        showSurrenderDialog, // NEW
-        confirmSurrender, // NEW
-        cancelSurrender, // NEW
+        surrenderGame, // NEW: Expose surrender function
       }}
     >
       {children}
