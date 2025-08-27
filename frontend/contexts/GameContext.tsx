@@ -20,10 +20,8 @@ interface GameContextType {
   newGame: () => void;
   sendMessage: (message: string) => void;
   setTheme: (theme: ThemeColors) => void;
-  
-  // Surrender functionality - renamed to match GameInfo.tsx usage
+  // NEW: Surrender functionality
   requestSurrender: () => void;
-  isSurrendering: boolean;
 }
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
@@ -48,18 +46,13 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
   const [currentTheme, setCurrentTheme] = useState<ThemeColors>(BOARD_THEMES[0]);
   const [isAIGame, setIsAIGame] = useState(false);
   const [aiDifficulty, setAiDifficulty] = useState<AIDifficulty | null>(null);
-  
-  // Surrender state
-  const [isSurrendering, setIsSurrendering] = useState(false);
 
   // Helper function to sync current player coins with game state
   const syncPlayerCoins = (gameState: GameState) => {
     if (!currentPlayer || !socket) return gameState;
     
-    // Find current player in game state and update their coins
     const updatedPlayers = gameState.players.map(player => {
       if (player.id === socket.id && player.isAuthenticated) {
-        // Keep coins from current player (which should be fresh from database)
         return {
           ...player,
           coins: currentPlayer.coins
@@ -74,13 +67,52 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
     };
   };
 
+  // NEW: Listen for room reconnection events
+  useEffect(() => {
+    const handleRoomReconnected = (event: CustomEvent) => {
+      const { roomId: reconnectedRoomId, gameState: reconnectedGameState } = event.detail;
+      console.log('🏠 Room reconnected:', reconnectedRoomId);
+      
+      setRoomId(reconnectedRoomId);
+      const syncedGameState = syncPlayerCoins(reconnectedGameState);
+      setGameState(syncedGameState);
+      
+      // Determine if it's an AI game based on players
+      const hasAIPlayer = reconnectedGameState.players.some((p: any) => p.id === 'AI');
+      setIsAIGame(hasAIPlayer);
+      
+      if (hasAIPlayer) {
+        // Extract AI difficulty from AI player's name
+        const aiPlayer = reconnectedGameState.players.find((p: any) => p.id === 'AI');
+        if (aiPlayer && aiPlayer.displayName) {
+          const difficultyMatch = aiPlayer.displayName.match(/\((EASY|MEDIUM|HARD)\)/);
+          if (difficultyMatch) {
+            setAiDifficulty(difficultyMatch[1].toLowerCase() as AIDifficulty);
+          }
+        }
+      } else {
+        setAiDifficulty(null);
+      }
+      
+      toast.success('Đã kết nối lại phòng game!', {
+        duration: 3000,
+        icon: '🔄'
+      });
+    };
+
+    window.addEventListener('roomReconnected', handleRoomReconnected as EventListener);
+    
+    return () => {
+      window.removeEventListener('roomReconnected', handleRoomReconnected as EventListener);
+    };
+  }, [socket, currentPlayer]);
+
   useEffect(() => {
     if (!socket) return;
 
     // Socket event listeners
     socket.on('roomCreated', (data: { roomId: string; gameState: GameState }) => {
       setRoomId(data.roomId);
-      // Sync coins when room is created
       const syncedGameState = syncPlayerCoins(data.gameState);
       setGameState(syncedGameState);
       setIsAIGame(false);
@@ -90,7 +122,6 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
 
     socket.on('roomJoined', (data: { roomId: string; gameState: GameState }) => {
       setRoomId(data.roomId);
-      // Sync coins when joining room
       const syncedGameState = syncPlayerCoins(data.gameState);
       setGameState(syncedGameState);
       setIsAIGame(false);
@@ -100,7 +131,6 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
 
     socket.on('aiGameCreated', (data: { roomId: string; gameState: GameState; difficulty: AIDifficulty }) => {
       setRoomId(data.roomId);
-      // Sync coins when AI game is created
       const syncedGameState = syncPlayerCoins(data.gameState);
       setGameState(syncedGameState);
       setIsAIGame(true);
@@ -115,7 +145,6 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
             newGameState.gameStatus === 'finished' &&
             (!prevState || !prevState.coinTransactions)) {
           
-          // Find current player's transaction
           const playerTransaction = newGameState.coinTransactions.find(
             transaction => transaction.playerId === socket.id
           );
@@ -126,12 +155,10 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
               playerTransaction.coinChange
             );
             
-            // Refresh player data to get updated coins from database
             if (refreshPlayerData && currentPlayer) {
               refreshPlayerData(currentPlayer.displayName);
             }
             
-            // Show toast notification based on result
             if (playerTransaction.result === 'win') {
               toast.success(message, {
                 duration: 5000,
@@ -169,7 +196,6 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
           }
         }
         
-        // Always sync player coins with current player data
         return syncPlayerCoins(newGameState);
       });
     });
@@ -182,58 +208,54 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
       setGameState(prev => prev ? { ...prev, timeLeft } : null);
     });
 
-    // Handle surrender events
+    // NEW: Handle surrender response
     socket.on('surrenderResponse', (data: { success: boolean; message?: string; gameState?: GameState }) => {
-      setIsSurrendering(false);
-      
-      if (data.success && data.gameState) {
-        // Update game state with new coins after surrender
-        const syncedGameState = syncPlayerCoins(data.gameState);
-        setGameState(syncedGameState);
+      if (data.success) {
+        toast.success(data.message || 'Đầu hàng thành công!', {
+          duration: 4000,
+          icon: '🏳️',
+          style: {
+            background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+            color: 'white',
+            fontWeight: 'bold',
+            border: '2px solid #d97706',
+          },
+        });
+        
+        // Update game state if provided
+        if (data.gameState) {
+          const syncedGameState = syncPlayerCoins(data.gameState);
+          setGameState(syncedGameState);
+        }
         
         // Refresh player data to get updated coins
         if (refreshPlayerData && currentPlayer) {
           refreshPlayerData(currentPlayer.displayName);
         }
-        
-        toast.success(data.message || 'Đã đầu hàng!', {
-          duration: 3000,
-          icon: '🏳️',
-        });
       } else {
         toast.error(data.message || 'Không thể đầu hàng!', {
-          duration: 3000,
-          icon: '❌',
+          duration: 4000,
+          icon: '❌'
         });
       }
     });
 
-    socket.on('playerSurrendered', (data: { message: string; gameState: GameState }) => {
-      // Update game state when opponent surrenders
+    // NEW: Handle game reset after surrender
+    socket.on('gameReset', (data: { gameState: GameState; message?: string }) => {
       const syncedGameState = syncPlayerCoins(data.gameState);
       setGameState(syncedGameState);
       
-      // Refresh player data to get updated coins
-      if (refreshPlayerData && currentPlayer) {
-        refreshPlayerData(currentPlayer.displayName);
-      }
+      // Clear messages for new game
+      setMessages([]);
       
-      toast.success(data.message, {
-        duration: 4000,
-        style: {
-          background: 'linear-gradient(135deg, #10b981, #059669)',
-          color: 'white',
-          fontWeight: 'bold',
-          border: '2px solid #059669',
-        },
-        icon: '🎉',
+      toast.success(data.message || 'Ván mới đã được tạo!', {
+        duration: 3000,
+        icon: '🎮'
       });
     });
 
     socket.on('error', (errorMessage: string) => {
       toast.error(errorMessage);
-      // Reset surrender state on error
-      setIsSurrendering(false);
     });
 
     return () => {
@@ -244,7 +266,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
       socket.off('newMessage');
       socket.off('timerUpdate');
       socket.off('surrenderResponse');
-      socket.off('playerSurrendered');
+      socket.off('gameReset');
       socket.off('error');
     };
   }, [socket, currentPlayer, refreshPlayerData]);
@@ -302,19 +324,15 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
 
   const newGame = () => {
     if (socket && roomId) {
-      // Refresh player data before starting new game
       if (refreshPlayerData && currentPlayer) {
         refreshPlayerData(currentPlayer.displayName);
       }
       
-      // Send AI info if playing with AI
       if (isAIGame && aiDifficulty) {
         socket.emit('newGame', { roomId, isAI: true, difficulty: aiDifficulty });
-        // Clear messages for AI games
         setMessages([]);
       } else {
         socket.emit('newGame', { roomId, isAI: false });
-        // Keep chat history for human vs human games
       }
       toast.success('Ván mới đã được tạo!');
     }
@@ -331,15 +349,20 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
     toast.success(`Đã chọn theme ${theme.name} ${theme.emoji}`);
   };
 
-  // Surrender function - renamed to match GameInfo.tsx usage
+  // NEW: Request surrender function
   const requestSurrender = () => {
-    if (!socket || !roomId || !currentPlayer) {
+    if (!socket || !roomId) {
       toast.error('Không thể đầu hàng lúc này!');
       return;
     }
 
-    if (!gameState || gameState.gameStatus !== 'playing') {
-      toast.error('Chỉ có thể đầu hàng khi đang chơi!');
+    if (!currentPlayer) {
+      toast.error('Bạn cần đăng nhập để đầu hàng!');
+      return;
+    }
+
+    if (currentPlayer.coins < 10) {
+      toast.error('Bạn cần ít nhất 10 xu để đầu hàng!');
       return;
     }
 
@@ -348,33 +371,18 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
       return;
     }
 
-    if (gameState.players.length < 2) {
-      toast.error('Cần có 2 người chơi để đầu hàng!');
+    if (!gameState || gameState.gameStatus !== 'playing') {
+      toast.error('Chỉ có thể đầu hàng khi đang chơi!');
       return;
     }
 
-    if (currentPlayer.coins < 10) {
-      toast.error('Bạn cần ít nhất 10 xu để có thể đầu hàng!');
+    if (gameState.players.length !== 2) {
+      toast.error('Cần đủ 2 người chơi để đầu hàng!');
       return;
     }
 
-    // Show confirmation dialog
-    const confirmSurrender = window.confirm(
-      '🏳️ Bạn có chắc chắn muốn đầu hàng?\n\n' +
-      '• Bạn sẽ bị trừ 10 xu\n' +
-      '• Đối thủ sẽ được cộng 10 xu\n' +
-      '• Ván đấu sẽ kết thúc ngay lập tức'
-    );
-
-    if (confirmSurrender) {
-      setIsSurrendering(true);
-      socket.emit('surrender', { roomId });
-      
-      toast.loading('Đang xử lý đầu hàng...', {
-        duration: 2000,
-        icon: '⏳',
-      });
-    }
+    console.log('🏳️ Requesting surrender...');
+    socket.emit('requestSurrender', { roomId });
   };
 
   return (
@@ -394,9 +402,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
         newGame,
         sendMessage,
         setTheme,
-        // Surrender functionality - using requestSurrender to match GameInfo.tsx
-        requestSurrender,
-        isSurrendering,
+        requestSurrender, // NEW: Export surrender function
       }}
     >
       {children}
