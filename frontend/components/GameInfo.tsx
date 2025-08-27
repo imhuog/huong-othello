@@ -7,6 +7,11 @@ import ThemeSelector from './ThemeSelector';
 import PlayerProfile from './PlayerProfile';
 import toast from 'react-hot-toast';
 
+// Define surrender confirmation state interface
+interface SurrenderConfirmation {
+  show: boolean;
+}
+
 const GameInfo: React.FC = () => {
   const { 
     gameState, 
@@ -15,13 +20,11 @@ const GameInfo: React.FC = () => {
     startGame, 
     isAIGame, 
     aiDifficulty,
-    surrenderConfirmation,
-    showSurrenderDialog,
-    confirmSurrender,
-    cancelSurrender
+    surrenderGame
   } = useGame();
   const { socket, currentPlayer, logoutPlayer } = useSocket();
   const [showRules, setShowRules] = useState(false);
+  const [surrenderConfirmation, setSurrenderConfirmation] = useState<SurrenderConfirmation>({ show: false });
 
   if (!gameState) return null;
 
@@ -29,7 +32,7 @@ const GameInfo: React.FC = () => {
   const canStartGame = gameState.gameStatus === 'waiting' && gameState.players.length === 2;
   const isGameFinished = gameState.gameStatus === 'finished';
   
-  // NEW: Check if current player can surrender
+  // Check if current player can surrender
   const canSurrender = () => {
     if (!socket || !currentPlayer || isAIGame) return false;
     if (gameState.gameStatus !== 'playing') return false;
@@ -38,6 +41,22 @@ const GameInfo: React.FC = () => {
     // Check if current player is actually in the game
     const currentPlayerInGame = gameState.players.find(p => p.id === socket.id);
     return !!currentPlayerInGame;
+  };
+
+  // Show surrender dialog
+  const showSurrenderDialog = () => {
+    setSurrenderConfirmation({ show: true });
+  };
+
+  // Confirm surrender
+  const confirmSurrender = () => {
+    surrenderGame();
+    setSurrenderConfirmation({ show: false });
+  };
+
+  // Cancel surrender
+  const cancelSurrender = () => {
+    setSurrenderConfirmation({ show: false });
   };
 
   const getWinner = () => {
@@ -263,7 +282,7 @@ const GameInfo: React.FC = () => {
                   🎮 Game đang diễn ra...
                 </div>
                 
-                {/* NEW: Surrender Button */}
+                {/* Surrender Button */}
                 {canSurrender() && (
                   <motion.button
                     onClick={showSurrenderDialog}
@@ -412,7 +431,7 @@ const GameInfo: React.FC = () => {
         </div>
       )}
 
-      {/* NEW: Surrender Confirmation Dialog */}
+      {/* Surrender Confirmation Dialog */}
       <AnimatePresence>
         {surrenderConfirmation.show && (
           <motion.div
@@ -516,7 +535,7 @@ const GameInfo: React.FC = () => {
                 </div>
 
                 <div>
-                  <h4 className="font-semibold text-white mb-2">🔍 Quy tắc "kẹp":</h4>
+                  <h4 className="font-semibold text-white mb-2">📏 Quy tắc "kẹp":</h4>
                   <ul className="list-disc list-inside space-y-1">
                     <li>Quân mới đặt và quân cùng màu tạo thành một "đường thẳng"</li>
                     <li>Giữa chúng phải có ít nhất một quân đối thủ</li>
