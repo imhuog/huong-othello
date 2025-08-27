@@ -125,6 +125,40 @@ class Database {
     return player;
   }
 
+  // NEW: Handle surrender transaction - deduct coins from surrendering player, award to opponent
+  handleSurrender(surrendererNickname: string, opponentNickname: string): { surrenderer: PlayerData; opponent: PlayerData } {
+    const surrendererData = this.getOrCreatePlayer(surrendererNickname);
+    const opponentData = this.getOrCreatePlayer(opponentNickname);
+    
+    // Deduct 10 coins from surrendering player
+    surrendererData.coins = Math.max(0, surrendererData.coins - 10);
+    surrendererData.gamesPlayed++;
+    surrendererData.gamesLost++;
+    surrendererData.lastPlayed = new Date().toISOString();
+    
+    // Award 10 coins to opponent
+    opponentData.coins += 10;
+    opponentData.gamesPlayed++;
+    opponentData.gamesWon++;
+    opponentData.lastPlayed = new Date().toISOString();
+    
+    // Save both players
+    const normalizedSurrendererNickname = surrendererNickname.toLowerCase().trim();
+    const normalizedOpponentNickname = opponentNickname.toLowerCase().trim();
+    
+    this.data.players[normalizedSurrendererNickname] = surrendererData;
+    this.data.players[normalizedOpponentNickname] = opponentData;
+    
+    this.saveData();
+    
+    console.log(`Surrender handled: ${surrendererNickname} (-10 coins, ${surrendererData.coins} total) → ${opponentNickname} (+10 coins, ${opponentData.coins} total)`);
+    
+    return {
+      surrenderer: surrendererData,
+      opponent: opponentData
+    };
+  }
+
   // Lấy top players by coins
   getTopPlayers(limit: number = 10): PlayerData[] {
     return Object.values(this.data.players)
