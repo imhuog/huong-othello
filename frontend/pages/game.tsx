@@ -40,7 +40,7 @@ const GamePage: React.FC = () => {
       
       // Auto-start new game after surrender (optional)
       setTimeout(() => {
-        if (gameState?.gameStatus === 'finished' && gameState.surrenderedBy) {
+        if (gameState?.gameStatus === 'finished') {
           console.log('🔄 Auto-creating new game after surrender...');
           newGame();
         }
@@ -58,43 +58,14 @@ const GamePage: React.FC = () => {
 
   // Monitor game state changes for surrender handling
   useEffect(() => {
-    if (gameState?.gameStatus === 'finished' && gameState.surrenderedBy) {
-      console.log('🏳️ Game ended by surrender:', gameState.surrenderedBy);
+    // Check if game ended (you can add additional logic here if needed)
+    if (gameState?.gameStatus === 'finished') {
+      console.log('🏁 Game finished');
       
-      // Show surrender result message
-      const surrenderingPlayer = gameState.players.find(p => p.id === gameState.surrenderedBy);
-      const winningPlayer = gameState.players.find(p => p.id === gameState.winnerId);
-      
-      if (surrenderingPlayer && winningPlayer) {
-        const isCurrentPlayerWinner = socket?.id === gameState.winnerId;
-        const isCurrentPlayerSurrendered = socket?.id === gameState.surrenderedBy;
-        
-        if (isCurrentPlayerSurrendered) {
-          toast.error(`Bạn đã đầu hàng! ${winningPlayer.displayName} thắng.`, {
-            duration: 5000,
-            icon: '🏳️',
-            style: {
-              background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-              color: 'white',
-              fontWeight: 'bold',
-              border: '2px solid #dc2626',
-            },
-          });
-        } else if (isCurrentPlayerWinner) {
-          toast.success(`${surrenderingPlayer.displayName} đã đầu hàng! Bạn thắng!`, {
-            duration: 5000,
-            icon: '🏆',
-            style: {
-              background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
-              color: 'white',
-              fontWeight: 'bold',
-              border: '2px solid #f59e0b',
-            },
-          });
-        }
-      }
+      // Additional surrender handling logic can be added here
+      // For now, we'll just log and let the existing game end logic handle it
     }
-  }, [gameState?.gameStatus, gameState?.surrenderedBy, gameState?.winnerId, socket?.id]);
+  }, [gameState?.gameStatus, socket?.id]);
 
   if (!gameState) {
     return (
@@ -165,12 +136,8 @@ const GamePage: React.FC = () => {
       
       {/* Voice Controls - Fixed position */}
       <VoiceControls />
-
-       {/* NEW: Surrender Button - Fixed position */}
-      <SurrenderButton />
     </div>
   );
 };
 
 export default GamePage;
-
