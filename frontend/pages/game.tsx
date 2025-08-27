@@ -166,30 +166,11 @@ const GamePage: React.FC = () => {
       {/* Voice Controls - Fixed position */}
       <VoiceControls />
 
-      {/* Surrender Notification Overlay (if needed for additional UI feedback) */}
-      {gameState.gameStatus === 'finished' && gameState.surrenderedBy && (
-        <motion.div
-          className="fixed inset-0 bg-black/30 flex items-center justify-center z-40 pointer-events-none"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-        >
-          <motion.div
-            className="bg-white/10 backdrop-blur-md rounded-2xl p-6 text-white text-center border border-white/20"
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.8, opacity: 0 }}
-          >
-            <div className="text-4xl mb-4">🏳️</div>
-            <div className="text-lg font-semibold mb-2">Trận đấu kết thúc</div>
-            <div className="text-sm text-gray-300">
-              {gameState.players.find(p => p.id === gameState.surrenderedBy)?.displayName} đã đầu hàng
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
+       {/* NEW: Surrender Button - Fixed position */}
+      <SurrenderButton />
     </div>
   );
 };
 
 export default GamePage;
+
