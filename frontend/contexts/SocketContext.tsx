@@ -13,7 +13,7 @@ interface SocketContextType {
   loginPlayer: (loginData: LoginRequest) => void;
   logoutPlayer: () => void;
   isLoggingIn: boolean;
-  // NEW: Function to refresh player data from database
+  // Function to refresh player data from database
   refreshPlayerData: (nickname: string) => void;
 }
 
@@ -43,7 +43,6 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
   useEffect(() => {
     console.log('🔌 Initializing socket connection...');
     
-   // Kết nối đến server Render cho production, localhost cho development
     const serverUrl = process.env.NODE_ENV === 'production' 
       ? 'https://huong-othello.onrender.com'
       : 'http://localhost:3001';
@@ -62,7 +61,6 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
         reconnectionDelayMax: 5000
       });
 
-      // Set socket ngay lập tức
       setSocket(socketInstance);
 
       // Connection event handlers
@@ -80,7 +78,6 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
         console.log('❌ Socket disconnected:', reason);
         setIsConnected(false);
         
-        // Don't show toast for intentional disconnects
         if (reason !== 'io client disconnect') {
           toast.error('Mất kết nối máy chủ game!', {
             duration: 3000,
@@ -124,7 +121,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
         });
       });
 
-      // Handle login response - ĐÚNG EVENT NAME
+      // Handle login response
       socketInstance.on('loginResponse', (response: LoginResponse) => {
         console.log('🔥 Login response received:', response);
         setIsLoggingIn(false);
@@ -133,10 +130,8 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
           setCurrentPlayer(response.player);
           setIsAuthenticated(true);
           
-          // Save to localStorage with updated data
           localStorage.setItem('othello_player', JSON.stringify(response.player));
           
-          // Show welcome message
           if (response.isNewPlayer) {
             toast.success(
               `🎉 ${response.message}`,
@@ -167,28 +162,37 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
         }
       });
 
-      // NEW: Handle player data response for refresh
+      // NEW: Handle room reconnection
+      socketInstance.on('roomReconnected', (data: { roomId: string; gameState: any }) => {
+        console.log('🔄 Reconnected to room:', data.roomId);
+        toast.success('Đã kết nối lại phòng game!', {
+          duration: 3000,
+          icon: '🏠'
+        });
+        
+        // Emit event that GameContext can listen to
+        window.dispatchEvent(new CustomEvent('roomReconnected', { detail: data }));
+      });
+
+      // Handle player data response for refresh
       socketInstance.on('playerDataResponse', (response: { success: boolean; player?: PlayerModel; message?: string }) => {
         console.log('📊 Player data response received:', response);
         
         if (response.success && response.player) {
-          // Update current player with fresh data from database
           const updatedPlayer: PlayerModel = {
             ...currentPlayer!,
             coins: response.player.coins,
-          stats: response.player.stats ? {
-  gamesPlayed: response.player.stats.gamesPlayed,    // ← SỬA: truy xuất từ stats
-  gamesWon: response.player.stats.gamesWon,          // ← SỬA: truy xuất từ stats
-  gamesLost: response.player.stats.gamesLost,        // ← SỬA: truy xuất từ stats  
-  gamesDraw: response.player.stats.gamesDraw,        // ← SỬA: truy xuất từ stats
-  winRate: response.player.stats.gamesPlayed > 0 ? Math.round((response.player.stats.gamesWon / response.player.stats.gamesPlayed) * 100) : 0
-} : currentPlayer!.stats,
+            stats: response.player.stats ? {
+              gamesPlayed: response.player.stats.gamesPlayed,
+              gamesWon: response.player.stats.gamesWon,
+              gamesLost: response.player.stats.gamesLost,
+              gamesDraw: response.player.stats.gamesDraw,
+              winRate: response.player.stats.gamesPlayed > 0 ? Math.round((response.player.stats.gamesWon / response.player.stats.gamesPlayed) * 100) : 0
+            } : currentPlayer!.stats,
             lastPlayed: response.player.lastPlayed,
           };
           
           setCurrentPlayer(updatedPlayer);
-          
-          // Update localStorage with fresh data
           localStorage.setItem('othello_player', JSON.stringify(updatedPlayer));
           
           console.log('✅ Player data refreshed:', updatedPlayer.displayName, 'coins:', updatedPlayer.coins);
@@ -197,21 +201,53 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
         }
       });
 
-      // NEW: Handle surrender events
-      socketInstance.on('surrenderResponse', (response: { success: boolean; message?: string; gameState?: any }) => {
-        console.log('🏳️ Surrender response received:', response);
+      // NEW: Handle surrender notification from other players
+      socketInstance.on('playerSurrendered', (data: { 
+        playerId: string; 
+        playerName: string; 
+        winnerId: string; 
+        winnerName: string;
+        coinTransactions?: any[];
+        message?: string;
+      }) => {
+        console.log('🏳️ Player surrendered:', data);
         
-        if (response.success) {
-          // Player data will be refreshed by GameContext
-          console.log('✅ Surrender successful');
+        // Show notification about surrender
+        if (data.playerId === socketInstance.id) {
+          // This player surrendered
+          toast.error(`Bạn đã đầu hàng! Trừ 10 xu.`, {
+            duration: 5000,
+            icon: '🏳️',
+            style: {
+              background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+              color: 'white',
+              fontWeight: 'bold',
+              border: '2px solid #dc2626',
+            },
+          });
         } else {
-          console.error('❌ Surrender failed:', response.message);
+          // Other player surrendered
+          toast.success(`${data.playerName} đã đầu hàng! Bạn thắng và được +10 xu!`, {
+            duration: 5000,
+            icon: '🏆',
+            style: {
+              background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
+              color: 'white',
+              fontWeight: 'bold',
+              border: '2px solid #f59e0b',
+            },
+          });
         }
       });
 
-      socketInstance.on('playerSurrendered', (data: { message: string; gameState: any; surrenderedPlayer: string }) => {
-        console.log('🎉 Opponent surrendered:', data);
-        console.log(`✅ ${data.surrenderedPlayer} đã đầu hàng, bạn thắng!`);
+      // NEW: Handle surrender request from other player
+      socketInstance.on('surrenderRequested', (data: { playerId: string; playerName: string }) => {
+        console.log('🏳️ Surrender requested by:', data.playerName);
+        
+        toast.info(`${data.playerName} đã yêu cầu đầu hàng`, {
+          duration: 3000,
+          icon: '🏳️'
+        });
       });
 
       // Handle server errors
@@ -223,14 +259,13 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
         });
       });
 
-      // Auto-login với delay nhỏ hơn
+      // Auto-login with saved data
       const savedPlayerData = localStorage.getItem('othello_player');
       if (savedPlayerData) {
         try {
           const player = JSON.parse(savedPlayerData) as PlayerModel;
           console.log('📄 Auto-login with saved data:', player.displayName);
           
-          // Giảm delay xuống và kiểm tra socket instance
           const autoLoginTimeout = setTimeout(() => {
             console.log('Socket connected:', socketInstance.connected);
             if (socketInstance.connected) {
@@ -242,7 +277,6 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
               });
             } else {
               console.log('⏳ Socket not connected yet, waiting...');
-              // Thử lại sau khi connect
               socketInstance.once('connect', () => {
                 console.log('🚀 Auto-login after connection...');
                 socketInstance.emit('loginPlayer', {
@@ -252,9 +286,8 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
                 });
               });
             }
-          }, 1000); // Giảm từ 2000ms xuống 1000ms
+          }, 1000);
 
-          // Cleanup function
           return () => {
             clearTimeout(autoLoginTimeout);
             console.log('🧹 Cleaning up socket connection');
@@ -266,7 +299,6 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
         }
       }
 
-      // Cleanup on unmount (fallback)
       return () => {
         console.log('🧹 Cleaning up socket connection (fallback)');
         if (socketInstance.connected) {
@@ -282,7 +314,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
         icon: '💥'
       });
     }
-  }, []); // Empty dependency array - only run once
+  }, []);
 
   const loginPlayer = (loginData: LoginRequest) => {
     console.log('📤 Login attempt:', loginData);
@@ -293,7 +325,6 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
       return;
     }
 
-    // Validation trước khi check connection
     if (!loginData.nickname?.trim()) {
       toast.error('Vui lòng nhập nickname!');
       return;
@@ -307,8 +338,6 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     if (!isConnected) {
       console.error('❌ Socket not connected');
       toast.error('Chưa kết nối tới máy chủ! Đang thử kết nối lại...');
-      
-      // Try to reconnect
       socket.connect();
       return;
     }
@@ -316,28 +345,24 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     setIsLoggingIn(true);
     console.log('📡 Emitting loginPlayer event with data:', loginData);
     
-    // Emit the correct event name that matches backend
     socket.emit('loginPlayer', loginData);
     
-    // Set timeout to handle no response - tăng timeout
     const loginTimeout = setTimeout(() => {
       console.log('⏰ Login timeout - isLoggingIn:', isLoggingIn);
       if (isLoggingIn) {
         setIsLoggingIn(false);
         toast.error('Không nhận được phản hồi từ máy chủ. Vui lòng thử lại!');
       }
-    }, 15000); // Tăng từ 10s lên 15s
+    }, 15000);
 
-    // Clear timeout nếu nhận được response
     const clearTimeoutOnResponse = () => {
       clearTimeout(loginTimeout);
     };
 
-    // Listen for response to clear timeout
     socket.once('loginResponse', clearTimeoutOnResponse);
   };
 
-  // NEW: Function to refresh player data from database
+  // Function to refresh player data from database
   const refreshPlayerData = (nickname: string) => {
     console.log('🔄 Refreshing player data for:', nickname);
     
@@ -351,7 +376,6 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
       return;
     }
 
-    // Emit request to get fresh player data
     socket.emit('getPlayerData', nickname.trim());
   };
 
@@ -361,7 +385,6 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     setIsAuthenticated(false);
     setIsLoggingIn(false);
     
-    // Clear saved data
     localStorage.removeItem('othello_player');
     
     toast.success('Đã đăng xuất!', {
@@ -371,21 +394,3 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
   };
 
   const contextValue: SocketContextType = {
-    socket,
-    isConnected,
-    connectionError,
-    currentPlayer,
-    isAuthenticated,
-    loginPlayer,
-    logoutPlayer,
-    isLoggingIn,
-    refreshPlayerData // NEW: Add to context
-  };
-
-  return (
-    <SocketContext.Provider value={contextValue}>
-      {children}
-    </SocketContext.Provider>
-  );
-
-};
