@@ -21,8 +21,8 @@ interface GameContextType {
   sendMessage: (message: string) => void;
   setTheme: (theme: ThemeColors) => void;
   
-  // NEW: Surrender functionality
-  surrender: () => void;
+  // Surrender functionality - renamed to match GameInfo.tsx usage
+  requestSurrender: () => void;
   isSurrendering: boolean;
 }
 
@@ -49,7 +49,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
   const [isAIGame, setIsAIGame] = useState(false);
   const [aiDifficulty, setAiDifficulty] = useState<AIDifficulty | null>(null);
   
-  // NEW: Surrender state
+  // Surrender state
   const [isSurrendering, setIsSurrendering] = useState(false);
 
   // Helper function to sync current player coins with game state
@@ -182,7 +182,7 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
       setGameState(prev => prev ? { ...prev, timeLeft } : null);
     });
 
-    // NEW: Handle surrender events
+    // Handle surrender events
     socket.on('surrenderResponse', (data: { success: boolean; message?: string; gameState?: GameState }) => {
       setIsSurrendering(false);
       
@@ -331,8 +331,8 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
     toast.success(`Đã chọn theme ${theme.name} ${theme.emoji}`);
   };
 
-  // NEW: Surrender function
-  const surrender = () => {
+  // Surrender function - renamed to match GameInfo.tsx usage
+  const requestSurrender = () => {
     if (!socket || !roomId || !currentPlayer) {
       toast.error('Không thể đầu hàng lúc này!');
       return;
@@ -394,8 +394,8 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
         newGame,
         sendMessage,
         setTheme,
-        // NEW: Surrender functionality
-        surrender,
+        // Surrender functionality - using requestSurrender to match GameInfo.tsx
+        requestSurrender,
         isSurrendering,
       }}
     >
