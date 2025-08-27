@@ -394,3 +394,20 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
   };
 
   const contextValue: SocketContextType = {
+    socket,
+    isConnected,
+    connectionError,
+    currentPlayer,
+    isAuthenticated,
+    loginPlayer,
+    logoutPlayer,
+    isLoggingIn,
+    refreshPlayerData
+  };
+
+  return (
+    <SocketContext.Provider value={contextValue}>
+      {children}
+    </SocketContext.Provider>
+  );
+};
