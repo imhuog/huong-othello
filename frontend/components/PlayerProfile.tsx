@@ -102,7 +102,7 @@ const PlayerProfile: React.FC<PlayerProfileProps> = ({ player, onLogout, compact
               }
               handleLogout();
             }}
-            className={`px-3 py-1 bg-red-500 hover:bg-red-500/30 text-white-400 hover:text-white-300 rounded-lg transition-colors text-sm font-medium ${
+            className={`px-3 py-1 bg-red-500 hover:bg-red-500/20 text-white hover:text-gray-200 rounded-lg transition-colors text-sm font-medium ${
               isMobile && !isOpen ? 'hidden' : 'block'
             }`}
           >
@@ -229,3 +229,4 @@ const PlayerProfile: React.FC<PlayerProfileProps> = ({ player, onLogout, compact
 };
 
 export default PlayerProfile;
+
