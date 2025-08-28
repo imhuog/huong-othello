@@ -105,7 +105,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
       >
         <div className="text-5xl sm:text-6xl mb-4">⚫⚪</div>
         <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">Đăng nhập</h1>
-        <p className="text-gray-300 text-sm sm:text-base">Zô Zô</p>
+        <p className="text-gray-300 text-sm sm:text-base">🤟Zô Zô🤟</p>
       </motion.div>
 
       {/* Connection Status */}
@@ -317,4 +317,5 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
 
 
 export default LoginForm;
+
 
