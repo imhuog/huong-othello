@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AVAILABLE_EMOJIS, PIECE_EMOJI_OPTIONS, LoginRequest } from '../types';
@@ -73,8 +74,8 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
       return {
         color: 'text-green-400',
         bgColor: 'bg-green-500/20',
-        text: '✅ Đã kết nối máy chủ game!',
-        icon: '🎮'
+        text: 'Đã kết nối máy chủ game!',
+        icon: '✅'
       };
     }
     
@@ -104,7 +105,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
       >
         <div className="text-5xl sm:text-6xl mb-4">⚫⚪</div>
         <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">Đăng nhập</h1>
-        <p className="text-gray-300 text-sm sm:text-base">Nhập nickname để bắt đầu chơi</p>
+        <p className="text-gray-300 text-sm sm:text-base">Zô Zô</p>
       </motion.div>
 
       {/* Connection Status */}
@@ -316,3 +317,4 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
 
 
 export default LoginForm;
+
